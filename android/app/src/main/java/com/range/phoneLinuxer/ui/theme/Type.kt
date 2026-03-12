@@ -1,4 +1,4 @@
-package com.range.PhoneLinuxer.ui.theme
+package com.range.phoneLinuxer.ui.theme
 
 import androidx.compose.material3.Typography
 import androidx.compose.ui.text.TextStyle

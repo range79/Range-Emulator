@@ -1,4 +1,4 @@
-package com.range.PhoneLinuxer
+package com.range.phoneLinuxer
 
 import org.junit.Test
 

@@ -1,4 +1,4 @@
-package com.range.PhoneLinuxer
+package com.range.phoneLinuxer
 
 import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.ext.junit.runners.AndroidJUnit4

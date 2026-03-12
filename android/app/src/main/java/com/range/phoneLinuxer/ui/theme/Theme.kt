@@ -1,6 +1,5 @@
-package com.range.PhoneLinuxer.ui.theme
+package com.range.phoneLinuxer.ui.theme
 
-import android.app.Activity
 import android.os.Build
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.MaterialTheme
