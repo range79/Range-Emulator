@@ -10,6 +10,7 @@ import androidx.activity.compose.setContent
 import androidx.activity.viewModels
 import androidx.core.net.toUri
 import com.range.phoneLinuxer.ui.navigation.AppNavigation
+import com.range.phoneLinuxer.ui.theme.PhoneLinuxerTheme
 import com.range.phoneLinuxer.viewModel.LinuxViewModel
 import timber.log.Timber
 
@@ -31,7 +32,12 @@ class MainActivity : ComponentActivity() {
         }
 
         setContent {
-            AppNavigation(vm)
+            PhoneLinuxerTheme {
+                androidx.compose.material3.Surface(
+                    color = androidx.compose.material3.MaterialTheme.colorScheme.background
+                ) {
+                    AppNavigation(vm)
+                }}
         }
     }
 }
