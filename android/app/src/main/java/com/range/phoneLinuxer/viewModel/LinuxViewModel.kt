@@ -35,9 +35,9 @@ class LinuxViewModel(application: Application) : AndroidViewModel(application) {
         val repository = repo ?: return
         viewModelScope.launch {
             _isDownloading.value = true
-            _downloadStatus.value = "Downloading Arch..."
+            _downloadStatus.value = "Downloading Arch ARM..."
             repository.downloadLinux(
-                "https://geo.mirror.pkgbuild.com/iso/latest/archlinux-x86_64.iso"
+                "https://os.archlinuxarm.org/os/ArchLinuxARM-aarch64-latest.tar.gz"
             ) { progress ->
                 _downloadProgress.value = progress
                 if (progress == 100) {
@@ -47,14 +47,13 @@ class LinuxViewModel(application: Application) : AndroidViewModel(application) {
             }
         }
     }
-
     fun downloadUbuntu() {
         val repository = repo ?: return
         viewModelScope.launch {
             _isDownloading.value = true
-            _downloadStatus.value = "Downloading Ubuntu..."
+            _downloadStatus.value = "Downloading Ubuntu ARM..."
             repository.downloadLinux(
-                "https://releases.ubuntu.com/24.04/ubuntu-24.04-desktop-amd64.iso"
+                "https://cdimage.ubuntu.com/releases/24.04/release/ubuntu-24.04-live-server-arm64.iso"
             ) { progress ->
                 _downloadProgress.value = progress
                 if (progress == 100) {
