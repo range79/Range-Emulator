@@ -39,7 +39,7 @@ fun SettingsScreen(onBack: () -> Unit, onNavigateToLogs: () -> Unit) {
 
     if (showDeleteDialog) {
         AlertDialog(
-            onDismissRequest = { },
+            onDismissRequest = { showDeleteDialog = false },
             title = { Text("Clear Cache?") },
             text = {
                 Text("This will remove temporary installation files and logs. " +
@@ -50,6 +50,7 @@ fun SettingsScreen(onBack: () -> Unit, onNavigateToLogs: () -> Unit) {
                     onClick = {
                         val recovered = cacheCleaner.clearAllCache()
                         cacheSize = "0.00 B"
+                        showDeleteDialog = false
                         scope.launch {
                             snackBarHostState.showSnackbar("Recovered $recovered")
                         }
@@ -60,7 +61,7 @@ fun SettingsScreen(onBack: () -> Unit, onNavigateToLogs: () -> Unit) {
                 }
             },
             dismissButton = {
-                TextButton(onClick = { }) {
+                TextButton(onClick = { showDeleteDialog = false }) {
                     Text("Cancel")
                 }
             }
@@ -132,7 +133,9 @@ fun SettingsScreen(onBack: () -> Unit, onNavigateToLogs: () -> Unit) {
                     title = "Clear Cache",
                     subtitle = "Current usage: $cacheSize",
                     icon = Icons.Default.DeleteSweep,
-                    onClick = { }
+                    onClick = {
+                        showDeleteDialog = true
+                    }
                 )
             }
 
