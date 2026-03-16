@@ -46,7 +46,7 @@ fun AppNavigation(vm: LinuxViewModel) {
         }
 
         composable(Screen.Logs) {
-//            LogScreen(onBack = { navController.popBackStack() })
+            LogScreen(onBack = { navController.popBackStack() })
         }
 
         composable(Screen.StartLinux) {
