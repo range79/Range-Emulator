@@ -8,6 +8,10 @@ object AppLogCollector : Timber.Tree() {
 
     override fun log(priority: Int, tag: String?, message: String, t: Throwable?) {
         if (logs.size > 200) logs.removeAt(0)
-        logs.add("[$tag] $message")
+
+        val logTag = tag ?: "App"
+        val timestamp = java.text.SimpleDateFormat("HH:mm:ss", java.util.Locale.getDefault()).format(java.util.Date())
+
+        logs.add("[$timestamp] [$logTag]: $message")
     }
 }
