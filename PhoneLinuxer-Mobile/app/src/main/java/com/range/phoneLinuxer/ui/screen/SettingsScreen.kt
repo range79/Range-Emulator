@@ -9,6 +9,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.ListAlt
+import androidx.compose.material.icons.automirrored.filled.OpenInNew
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -26,11 +27,10 @@ import kotlinx.coroutines.launch
 fun SettingsScreen(onBack: () -> Unit, onNavigateToLogs: () -> Unit) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    val snackbarHostState = remember { SnackbarHostState() }
+    val snackBarHostState = remember { SnackbarHostState() }
     val cacheCleaner = remember { CacheCleaner(context) }
 
     var cacheSize by remember { mutableStateOf("Calculating...") }
-
     var showDeleteDialog by remember { mutableStateOf(false) }
 
     LaunchedEffect(Unit) {
@@ -39,21 +39,19 @@ fun SettingsScreen(onBack: () -> Unit, onNavigateToLogs: () -> Unit) {
 
     if (showDeleteDialog) {
         AlertDialog(
-            onDismissRequest = { showDeleteDialog = false },
+            onDismissRequest = { },
             title = { Text("Clear Cache?") },
             text = {
                 Text("This will remove temporary installation files and logs. " +
-                        "Your downloaded Linux images (ISOs) will NOT be deleted. " +
-                        "Use this to free up internal storage.")
+                        "Your downloaded Linux images (ISOs) will NOT be deleted.")
             },
             confirmButton = {
                 TextButton(
                     onClick = {
                         val recovered = cacheCleaner.clearAllCache()
                         cacheSize = "0.00 B"
-                        showDeleteDialog = false
                         scope.launch {
-                            snackbarHostState.showSnackbar("Recovered $recovered")
+                            snackBarHostState.showSnackbar("Recovered $recovered")
                         }
                     },
                     colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error)
@@ -62,7 +60,7 @@ fun SettingsScreen(onBack: () -> Unit, onNavigateToLogs: () -> Unit) {
                 }
             },
             dismissButton = {
-                TextButton(onClick = { showDeleteDialog = false }) {
+                TextButton(onClick = { }) {
                     Text("Cancel")
                 }
             }
@@ -74,7 +72,7 @@ fun SettingsScreen(onBack: () -> Unit, onNavigateToLogs: () -> Unit) {
     } else true
 
     Scaffold(
-        snackbarHost = { SnackbarHost(snackbarHostState) },
+        snackbarHost = { SnackbarHost(snackBarHostState) },
         topBar = {
             TopAppBar(
                 title = { Text("App Settings") },
@@ -86,7 +84,11 @@ fun SettingsScreen(onBack: () -> Unit, onNavigateToLogs: () -> Unit) {
             )
         }
     ) { padding ->
-        LazyColumn(modifier = Modifier.fillMaxSize().padding(padding)) {
+        LazyColumn(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(padding)
+        ) {
 
             item { SettingHeader("Storage & Permissions") }
             item {
@@ -130,15 +132,41 @@ fun SettingsScreen(onBack: () -> Unit, onNavigateToLogs: () -> Unit) {
                     title = "Clear Cache",
                     subtitle = "Current usage: $cacheSize",
                     icon = Icons.Default.DeleteSweep,
-                    onClick = {
-                        showDeleteDialog = true
-                    }
+                    onClick = { }
                 )
             }
 
             item { HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp)) }
 
             item { SettingHeader("About") }
+
+            item {
+                SettingItem(
+                    title = "Developer",
+                    subtitle = "range79",
+                    icon = Icons.Default.Person
+                )
+            }
+
+            item {
+                SettingItem(
+                    title = "GitHub",
+                    subtitle = "github.com/range79",
+                    icon = Icons.Default.Code,
+                    onClick = {
+                        val intent = Intent(Intent.ACTION_VIEW, "https://github.com/range79".toUri())
+                        context.startActivity(intent)
+                    },
+                    trailing = {
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.OpenInNew,
+                            contentDescription = null,
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
+                )
+            }
+
             item {
                 SettingItem(
                     title = "App Version",
@@ -146,6 +174,8 @@ fun SettingsScreen(onBack: () -> Unit, onNavigateToLogs: () -> Unit) {
                     icon = Icons.Default.Info
                 )
             }
+
+            item { Spacer(modifier = Modifier.height(24.dp)) }
         }
     }
 }
@@ -168,7 +198,10 @@ fun SettingItem(
     onClick: (() -> Unit)? = null,
     trailing: @Composable (() -> Unit)? = null
 ) {
-    Surface(onClick = { onClick?.invoke() }, enabled = onClick != null) {
+    Surface(
+        onClick = { onClick?.invoke() },
+        enabled = onClick != null
+    ) {
         ListItem(
             headlineContent = { Text(title) },
             supportingContent = { Text(subtitle) },
