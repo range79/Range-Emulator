@@ -1,11 +1,15 @@
 package com.range.phoneLinuxer.ui.navigation
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.runtime.Composable
+import androidx.navigation.NavController
 import androidx.navigation.compose.*
 import com.range.phoneLinuxer.data.repository.SettingsRepository
 import com.range.phoneLinuxer.ui.screen.*
 import com.range.phoneLinuxer.ui.screen.download.DownloadScreen
 import com.range.phoneLinuxer.ui.screen.settings.SettingsScreen
+
+import com.range.phoneLinuxer.util.NavDebouncer
 import com.range.phoneLinuxer.viewModel.LinuxViewModel
 
 object Screen {
@@ -23,43 +27,59 @@ fun AppNavigation(
 ) {
     val navController = rememberNavController()
 
+    fun safeNavigate(route: String) {
+        if (NavDebouncer.canNavigate()) {
+            navController.navigate(route)
+        }
+    }
+
+    fun safePop() {
+        if (NavDebouncer.canNavigate()) {
+            navController.popBackStack()
+        }
+    }
+
     NavHost(
         navController = navController,
         startDestination = Screen.Welcome
     ) {
         composable(Screen.Welcome) {
             WelcomeScreen(
-                onDownloadDistro = { navController.navigate(Screen.Main) },
-                onStartDistro = { navController.navigate(Screen.StartLinux) },
-                onNavigateToSettings = { navController.navigate(Screen.Settings) },
-                onNavigateToLogs = { navController.navigate(Screen.Logs) }
+                onDownloadDistro = { safeNavigate(Screen.Main) },
+                onStartDistro = { safeNavigate(Screen.StartLinux) },
+                onNavigateToSettings = { safeNavigate(Screen.Settings) },
+                onNavigateToLogs = { safeNavigate(Screen.Logs) }
             )
         }
 
         composable(Screen.Main) {
+            BackHandler { safePop() }
             DownloadScreen(
                 vm = vm,
-                onNavigateToSettings = { navController.navigate(Screen.Settings) },
-                onBack = { navController.popBackStack() },
-                settingsRepository = settingsRepository
+                settingsRepository = settingsRepository,
+                onNavigateToSettings = { safeNavigate(Screen.Settings) },
+                onBack = { safePop() }
             )
         }
 
         composable(Screen.Settings) {
+            BackHandler { safePop() }
             SettingsScreen(
-                onBack = { navController.popBackStack() },
-                onNavigateToLogs = { navController.navigate(Screen.Logs) },
+                onBack = { safePop() },
+                onNavigateToLogs = { safeNavigate(Screen.Logs) },
                 repository = settingsRepository
             )
         }
 
         composable(Screen.Logs) {
-            LogScreen(onBack = { navController.popBackStack() })
+            BackHandler { safePop() }
+            LogScreen(onBack = { safePop() })
         }
 
         composable(Screen.StartLinux) {
+            BackHandler { safePop() }
             StartLinuxScreen(
-                onBack = { navController.popBackStack() },
+                onBack = { safePop() },
                 onAddEmulator = { },
                 onStartVM = { vmSettings ->
                 },
