@@ -4,6 +4,7 @@ import androidx.compose.runtime.Composable
 import androidx.navigation.compose.*
 import com.range.phoneLinuxer.data.repository.SettingsRepository
 import com.range.phoneLinuxer.ui.screen.*
+import com.range.phoneLinuxer.ui.screen.download.DownloadScreen
 import com.range.phoneLinuxer.ui.screen.settings.SettingsScreen
 import com.range.phoneLinuxer.viewModel.LinuxViewModel
 
