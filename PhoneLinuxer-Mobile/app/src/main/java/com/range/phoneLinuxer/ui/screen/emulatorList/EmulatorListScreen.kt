@@ -1,7 +1,9 @@
 package com.range.phoneLinuxer.ui.screen.emulatorList
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -17,6 +19,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.range.phoneLinuxer.data.enums.ScreenType
 import com.range.phoneLinuxer.data.enums.VmState
 import com.range.phoneLinuxer.data.model.VirtualMachineSettings
 
@@ -107,8 +110,9 @@ fun VMCard(
     onEdit: () -> Unit,
     onDelete: () -> Unit
 ) {
-    val isOperational = vm.state == VmState.RUNNING || vm.state == VmState.STARTING || vm.state == VmState.STOPPING
-    val canModify = !isOperational
+    val isRunning = vm.state == VmState.RUNNING
+    val isTransitioning = vm.state == VmState.STARTING || vm.state == VmState.STOPPING
+    val canModify = !isRunning && !isTransitioning
 
     val statusColor by animateColorAsState(
         targetValue = when (vm.state) {
@@ -162,8 +166,9 @@ fun VMCard(
                             border = if(vm.state == VmState.INACTIVE) BorderStroke(1.dp, Color.Gray.copy(alpha = 0.3f)) else null
                         ) {}
                     }
+                    val displayPort = if (vm.screenType == ScreenType.VNC) vm.vncPort else vm.rdpPort
                     Text(
-                        text = "${vm.state.name} • Port ${vm.vncPort}",
+                        text = "${vm.state.name} • ${vm.screenType.name} Port $displayPort",
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -183,16 +188,21 @@ fun VMCard(
 
                     FilledIconButton(
                         onClick = onStart,
+                        enabled = !isTransitioning,
                         modifier = Modifier.size(44.dp),
                         colors = IconButtonDefaults.filledIconButtonColors(
-                            containerColor = if (vm.state == VmState.RUNNING) MaterialTheme.colorScheme.errorContainer
+                            containerColor = if (isRunning) MaterialTheme.colorScheme.errorContainer
                             else MaterialTheme.colorScheme.primaryContainer
                         )
                     ) {
-                        Icon(
-                            imageVector = if (vm.state == VmState.RUNNING) Icons.Default.Stop else Icons.Default.PlayArrow,
-                            contentDescription = "Action"
-                        )
+                        if (isTransitioning) {
+                            CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp, color = MaterialTheme.colorScheme.onPrimaryContainer)
+                        } else {
+                            Icon(
+                                imageVector = if (isRunning) Icons.Default.Stop else Icons.Default.PlayArrow,
+                                contentDescription = "Action"
+                            )
+                        }
                     }
                 }
             }
@@ -208,9 +218,10 @@ fun VMCard(
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 InfoChip(Icons.Default.Memory, "${vm.ramMB} MB")
-                InfoChip(Icons.Default.SettingsInputComponent, "${vm.cpuCores} CPU")
+                InfoChip(Icons.Default.SettingsInputComponent, "${vm.cpuCores} Core")
+                InfoChip(Icons.Default.Monitor, "${vm.screenWidth}x${vm.screenHeight}")
                 if (vm.isGpuEnabled) InfoChip(Icons.Default.Bolt, "GPU")
-                InfoChip(Icons.Default.Monitor, vm.screenResolution)
+                if (vm.easyInstall) InfoChip(Icons.Default.AutoFixHigh, "Easy")
             }
         }
     }

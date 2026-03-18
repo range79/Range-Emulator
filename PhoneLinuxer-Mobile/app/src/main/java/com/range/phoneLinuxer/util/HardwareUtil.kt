@@ -2,6 +2,7 @@ package com.range.phoneLinuxer.util
 
 import android.app.ActivityManager
 import android.content.Context
+import android.os.StatFs
 import java.io.File
 
 object HardwareUtil {
@@ -33,4 +34,19 @@ object HardwareUtil {
             4
         }
     }
+    fun getAvailableInternalStorageGB(context: Context): Float {
+        return try {
+            val stat = StatFs(context.filesDir.absolutePath)
+            val bytesAvailable = stat.availableBlocksLong * stat.blockSizeLong
+            bytesAvailable / (1024f * 1024f * 1024f)
+        } catch (e: Exception) {
+            0f
+        }
+    }
+
+    fun getSafeStorageLimitGB(context: Context): Float {
+        val available = getAvailableInternalStorageGB(context)
+        return (available * 0.9f).coerceAtLeast(0f)
+    }
+
 }

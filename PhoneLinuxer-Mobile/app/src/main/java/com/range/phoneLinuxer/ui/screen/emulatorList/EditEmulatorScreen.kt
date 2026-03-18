@@ -15,10 +15,10 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import com.range.phoneLinuxer.data.enums.*
 import com.range.phoneLinuxer.data.model.*
+import com.range.phoneLinuxer.ui.screen.addNewEmulator.CpuModelDropdown
 import com.range.phoneLinuxer.ui.screen.addNewEmulator.KvmStatusCard
 import com.range.phoneLinuxer.ui.screen.addNewEmulator.SectionHeader
 import com.range.phoneLinuxer.ui.screen.addNewEmulator.SettingSlider
-import com.range.phoneLinuxer.ui.screen.emulator.CpuModelDropdown
 import com.range.phoneLinuxer.util.HardwareUtil
 import com.range.phoneLinuxer.viewModel.EmulatorViewModel
 
@@ -42,7 +42,10 @@ fun EditEmulatorScreen(
     var ramAmount by remember { mutableFloatStateOf(1024f) }
     var cpuCores by remember { mutableFloatStateOf(1f) }
     var isGpuEnabled by remember { mutableStateOf(true) }
-    var selectedResolution by remember { mutableStateOf("1024x768") }
+
+    var screenWidth by remember { mutableStateOf("1280") }
+    var screenHeight by remember { mutableStateOf("720") }
+
     var vncPort by remember { mutableStateOf("5900") }
     var rdpPort by remember { mutableStateOf("3389") }
     var selectedScreenType by remember { mutableStateOf(ScreenType.VNC) }
@@ -54,7 +57,8 @@ fun EditEmulatorScreen(
             ramAmount = vm.ramMB.toFloat()
             cpuCores = vm.cpuCores.toFloat()
             isGpuEnabled = vm.isGpuEnabled
-            selectedResolution = vm.screenResolution
+            screenWidth = vm.screenWidth.toString()
+            screenHeight = vm.screenHeight.toString()
             vncPort = vm.vncPort.toString()
             rdpPort = vm.rdpPort.toString()
             selectedScreenType = vm.screenType
@@ -88,7 +92,8 @@ fun EditEmulatorScreen(
                                     cpuCores = cpuCores.toInt(),
                                     isGpuEnabled = isGpuEnabled,
                                     screenType = selectedScreenType,
-                                    screenResolution = selectedResolution,
+                                    screenWidth = screenWidth.toIntOrNull() ?: 1280,
+                                    screenHeight = screenHeight.toIntOrNull() ?: 720,
                                     vncPort = vncPort.toIntOrNull() ?: 5900,
                                     rdpPort = rdpPort.toIntOrNull() ?: 3389
                                 )?.let { onSave(it) }
@@ -118,7 +123,8 @@ fun EditEmulatorScreen(
                 value = vmName,
                 onValueChange = { vmName = it },
                 label = { Text("VM Name") },
-                modifier = Modifier.fillMaxWidth()
+                modifier = Modifier.fillMaxWidth(),
+                leadingIcon = { Icon(Icons.Default.Label, null) }
             )
 
             SectionHeader("Display & Graphics")
@@ -136,16 +142,33 @@ fun EditEmulatorScreen(
 
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedTextField(
-                    value = if (selectedScreenType == ScreenType.VNC) vncPort else rdpPort,
-                    onValueChange = { if (selectedScreenType == ScreenType.VNC) vncPort = it else rdpPort = it },
-                    label = { Text(if (selectedScreenType == ScreenType.VNC) "VNC Port" else "RDP Port") },
+                    value = screenWidth,
+                    onValueChange = { screenWidth = it },
+                    label = { Text("Width") },
                     modifier = Modifier.weight(1f)
                 )
                 OutlinedTextField(
-                    value = selectedResolution,
-                    onValueChange = { selectedResolution = it },
-                    label = { Text("Resolution") },
+                    value = screenHeight,
+                    onValueChange = { screenHeight = it },
+                    label = { Text("Height") },
                     modifier = Modifier.weight(1f)
+                )
+            }
+
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedTextField(
+                    value = vncPort,
+                    onValueChange = { vncPort = it },
+                    label = { Text("VNC Port") },
+                    modifier = Modifier.weight(1f),
+                    enabled = selectedScreenType == ScreenType.VNC
+                )
+                OutlinedTextField(
+                    value = rdpPort,
+                    onValueChange = { rdpPort = it },
+                    label = { Text("RDP Port") },
+                    modifier = Modifier.weight(1f),
+                    enabled = selectedScreenType == ScreenType.RDP
                 )
             }
 
@@ -154,6 +177,7 @@ fun EditEmulatorScreen(
                 Spacer(Modifier.width(8.dp))
                 Column(Modifier.weight(1f)) {
                     Text("Enable Virtio-GPU")
+                    Text("Hardware acceleration for graphics", style = MaterialTheme.typography.labelSmall)
                 }
                 Switch(checked = isGpuEnabled, onCheckedChange = { isGpuEnabled = it })
             }
