@@ -33,7 +33,8 @@ fun AppNavigation(
 ) {
     val navController = rememberNavController()
     val context = LocalContext.current
-    val vmList by emulatorVm.vms.collectAsState()
+
+    val vmList by emulatorVm.vms.collectAsState(initial = emptyList())
 
     LaunchedEffect(Unit) {
         emulatorVm.uiEvent.collect { event ->
@@ -58,7 +59,7 @@ fun AppNavigation(
     }
 
     fun safePop() {
-        if (NavDebouncer.canNavigate()) {
+        if (NavDebouncer.canNavigate() && navController.previousBackStackEntry != null) {
             navController.popBackStack()
         }
     }
@@ -106,7 +107,6 @@ fun AppNavigation(
                 onBack = { safePop() },
                 onAddEmulator = { safeNavigate(Screen.AddEmulator) },
                 onStartVM = { selectedVm ->
-                    println("Launching: ${selectedVm.vmName}")
                     safeNavigate(Screen.Logs)
                 },
                 vms = vmList,
@@ -117,17 +117,13 @@ fun AppNavigation(
         }
 
         composable(Screen.AddEmulator) {
-            var isSavingInProgress by remember { mutableStateOf(false) }
-
+            BackHandler { safePop() }
             AddNewEmulatorScreen(
                 viewModel = emulatorVm,
                 onBack = { safePop() },
                 onSave = { newVmSettings ->
-                    if (!isSavingInProgress) {
-                        isSavingInProgress = true
-                        emulatorVm.saveVm(newVmSettings)
-                        safePop()
-                    }
+                    emulatorVm.saveVm(newVmSettings)
+                    safePop()
                 }
             )
         }

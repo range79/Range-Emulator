@@ -53,7 +53,7 @@ dependencies {
     //noinspection UseTomlInstead
     implementation("androidx.compose.material:material-icons-extended")
     implementation("com.google.firebase:firebase-crashlytics-buildtools:3.0.6")
-
+    implementation("androidx.work:work-runtime-ktx:2.11.1")
     // Source: https://mvnrepository.com/artifact/org.slf4j/slf4j-simple
     testImplementation("org.slf4j:slf4j-simple:2.0.17")
     // Source: https://mvnrepository.com/artifact/androidx.navigation/navigation-compose
