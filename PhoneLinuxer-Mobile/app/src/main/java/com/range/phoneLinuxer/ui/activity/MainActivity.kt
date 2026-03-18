@@ -21,7 +21,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.core.content.ContextCompat
 import androidx.core.net.toUri
 import com.range.phoneLinuxer.data.model.AppSettings
-import com.range.phoneLinuxer.data.model.DarkModeEnum
+import com.range.phoneLinuxer.data.enums.DarkModeEnum
 import com.range.phoneLinuxer.data.repository.SettingsRepository
 import com.range.phoneLinuxer.data.repository.impl.SettingsRepositoryImpl
 import com.range.phoneLinuxer.ui.navigation.AppNavigation
@@ -29,12 +29,16 @@ import com.range.phoneLinuxer.ui.screen.PermissionDeniedScreen
 import com.range.phoneLinuxer.ui.theme.PhoneLinuxerTheme
 import com.range.phoneLinuxer.util.AppLogCollector
 import com.range.phoneLinuxer.viewModel.LinuxViewModel
+import com.range.phoneLinuxer.viewModel.EmulatorViewModel
 import timber.log.Timber
 
 class MainActivity : ComponentActivity() {
 
-    private val viewModel: LinuxViewModel by viewModels()
+    private val linuxViewModel: LinuxViewModel by viewModels()
+    private val emulatorViewModel: EmulatorViewModel by viewModels()
+
     private lateinit var settingsRepository: SettingsRepository
+
     private val isStoragePermissionGranted = mutableStateOf(false)
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -67,7 +71,8 @@ class MainActivity : ComponentActivity() {
 
                     if (hasPermission) {
                         AppNavigation(
-                            vm = viewModel,
+                            linuxVm = linuxViewModel,
+                            emulatorVm = emulatorViewModel,
                             settingsRepository = settingsRepository
                         )
                     } else {

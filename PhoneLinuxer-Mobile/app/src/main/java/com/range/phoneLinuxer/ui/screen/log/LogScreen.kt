@@ -1,4 +1,4 @@
-package com.range.phoneLinuxer.ui.screen
+package com.range.phoneLinuxer.ui.screen.log
 
 import android.content.ClipData
 import android.content.ClipboardManager

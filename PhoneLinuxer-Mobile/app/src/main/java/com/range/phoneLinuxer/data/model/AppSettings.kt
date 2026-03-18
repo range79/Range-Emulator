@@ -1,5 +1,7 @@
 package com.range.phoneLinuxer.data.model
 
+import com.range.phoneLinuxer.data.enums.DarkModeEnum
+
 data class AppSettings(
     val darkMode: DarkModeEnum = DarkModeEnum.SYSTEM,
     val useDynamicColors: Boolean = true,

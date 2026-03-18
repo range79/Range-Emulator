@@ -1,4 +1,4 @@
-package com.range.phoneLinuxer.data.model
+package com.range.phoneLinuxer.data.enums
 
 enum class DarkModeEnum {
     LIGHT,

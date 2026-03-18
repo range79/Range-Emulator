@@ -5,7 +5,7 @@ import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.*
 import androidx.datastore.preferences.preferencesDataStore
 import com.range.phoneLinuxer.data.model.AppSettings
-import com.range.phoneLinuxer.data.model.DarkModeEnum
+import com.range.phoneLinuxer.data.enums.DarkModeEnum
 import com.range.phoneLinuxer.data.repository.SettingsRepository
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.catch

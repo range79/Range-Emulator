@@ -1,4 +1,4 @@
-package com.range.phoneLinuxer.ui.screen
+package com.range.phoneLinuxer.ui.screen.emulator
 
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -14,6 +14,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.range.phoneLinuxer.data.model.VirtualMachineSettings
@@ -113,7 +114,7 @@ fun VMCard(vm: VirtualMachineSettings, onStart: () -> Unit) {
 }
 
 @Composable
-fun InfoChip(icon: androidx.compose.ui.graphics.vector.ImageVector, label: String) {
+fun InfoChip(icon: ImageVector, label: String) {
     Row(verticalAlignment = Alignment.CenterVertically) {
         Icon(icon, null, modifier = Modifier.size(16.dp), tint = MaterialTheme.colorScheme.outline)
         Spacer(Modifier.width(4.dp))

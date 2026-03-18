@@ -14,7 +14,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.unit.dp
-import com.range.phoneLinuxer.data.model.DarkModeEnum
+import com.range.phoneLinuxer.data.enums.DarkModeEnum
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
