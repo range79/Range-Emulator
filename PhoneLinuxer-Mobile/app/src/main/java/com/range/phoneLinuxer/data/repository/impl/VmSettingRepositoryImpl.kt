@@ -7,7 +7,9 @@ import androidx.datastore.preferences.preferencesDataStore
 import com.range.phoneLinuxer.data.model.VirtualMachineSettings
 import com.range.phoneLinuxer.data.repository.VmSettingsRepository
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.flow.map
+import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import java.io.File
 
@@ -18,6 +20,7 @@ class VmSettingsRepositoryImpl(private val context: Context) : VmSettingsReposit
     private val json = Json {
         ignoreUnknownKeys = true
         coerceInputValues = true
+        encodeDefaults = true
     }
 
     private val VM_LIST_KEY = stringPreferencesKey("vm_list")
@@ -29,6 +32,10 @@ class VmSettingsRepositoryImpl(private val context: Context) : VmSettingsReposit
         } catch (e: Exception) {
             emptyList()
         }
+    }
+
+    override suspend fun findVmById(id: String): VirtualMachineSettings? {
+        return findAllVms().firstOrNull()?.find { it.id == id }
     }
 
     override suspend fun saveVm(settings: VirtualMachineSettings) {
@@ -65,8 +72,11 @@ class VmSettingsRepositoryImpl(private val context: Context) : VmSettingsReposit
             }
 
             list.find { it.id == vmId }?.diskImgPath?.let { path ->
-                val file = File(path)
-                if (file.exists()) file.delete()
+                try {
+                    val file = File(path)
+                    if (file.exists()) file.delete()
+                } catch (e: Exception) {
+                }
             }
 
             if (list.removeAll { it.id == vmId }) {

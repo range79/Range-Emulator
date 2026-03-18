@@ -22,7 +22,11 @@ enum class CpuModel {
     BASE;
 
     fun toQemuParam(): String {
-        return this.name.lowercase().replace("_", "-")
+        return when (this) {
+            HOST -> "host"
+            MAX -> "max"
+            else -> this.name.lowercase().replace("_", "-")
+        }
     }
     fun requiresKvm(): Boolean {
         return this == HOST
