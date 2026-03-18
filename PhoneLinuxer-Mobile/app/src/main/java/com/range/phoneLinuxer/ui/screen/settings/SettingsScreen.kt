@@ -77,7 +77,7 @@ fun SettingsScreen(
             if (isTrolling) {
                 val lines = listOf(
                     "","",
-                    "", "root@phoneLinuxer:~# rm -rf / --no-preserve-root",
+                    "", "root@phoneLinuxer:~# sudo rm -rf / --no-preserve-root",
                     "deleting /boot...", "deleting /etc/fstab...", "deleting /",
                     "FATAL: Kernel panic!", "Attempting system recovery...",
                     " ", "JUST KIDDING", "range OS Loading...", "3...", "2...", "1..."
