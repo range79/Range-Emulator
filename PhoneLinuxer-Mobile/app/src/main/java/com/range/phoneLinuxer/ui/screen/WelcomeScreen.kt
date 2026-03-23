@@ -36,6 +36,8 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -44,10 +46,12 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.net.toUri
+import com.range.phoneLinuxer.viewModel.EmulatorViewModel
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun WelcomeScreen(
+    emulatorVm: EmulatorViewModel,
     onDownloadDistro: () -> Unit,
     onStartDistro: () -> Unit,
     onNavigateToSettings: () -> Unit,
@@ -55,6 +59,22 @@ fun WelcomeScreen(
 ) {
     val context = LocalContext.current
     var showSupportDialog by remember { mutableStateOf(false) }
+    var showEngineDialog by remember { mutableStateOf(false) }
+
+    val isEngineDownloaded by emulatorVm.isEngineDownloaded.collectAsState()
+    val isEngineDownloading by emulatorVm.isEngineDownloading.collectAsState()
+    val isEnginePaused by emulatorVm.isEnginePaused.collectAsState()
+    val downloadProgress by emulatorVm.engineDownloadProgress.collectAsState()
+
+    LaunchedEffect(Unit) {
+        if (!isEngineDownloaded) {
+            emulatorVm.prepareLatestEngineOTA()
+        }
+    }
+
+    if (showEngineDialog) {
+        EngineDownloadDialog(emulatorVm = emulatorVm, onDismiss = { showEngineDialog = false })
+    }
 
     if (showSupportDialog) {
         AlertDialog(
@@ -138,14 +158,36 @@ fun WelcomeScreen(
                     Text("Download Distro", fontSize = 18.sp)
                 }
 
-                OutlinedButton(
-                    onClick = onStartDistro,
-                    modifier = Modifier.fillMaxWidth(0.8f).height(64.dp),
-                    shape = MaterialTheme.shapes.large
-                ) {
-                    Icon(Icons.Default.PlayArrow, null)
-                    Spacer(Modifier.width(12.dp))
-                    Text("Start Linux", fontSize = 18.sp)
+                if (!isEngineDownloaded) {
+                    if (isEngineDownloading || isEnginePaused) {
+                        Button(
+                            onClick = { showEngineDialog = true },
+                            modifier = Modifier.fillMaxWidth(0.8f).height(64.dp),
+                            shape = MaterialTheme.shapes.large
+                        ) {
+                            Text("Downloading Engine... $downloadProgress%", fontSize = 18.sp)
+                        }
+                    } else {
+                        Button(
+                            onClick = { showEngineDialog = true },
+                            modifier = Modifier.fillMaxWidth(0.8f).height(64.dp),
+                            shape = MaterialTheme.shapes.large
+                        ) {
+                            Icon(Icons.Default.Download, null)
+                            Spacer(Modifier.width(12.dp))
+                            Text("Download QEMU Engine", fontSize = 18.sp)
+                        }
+                    }
+                } else {
+                    OutlinedButton(
+                        onClick = onStartDistro,
+                        modifier = Modifier.fillMaxWidth(0.8f).height(64.dp),
+                        shape = MaterialTheme.shapes.large
+                    ) {
+                        Icon(Icons.Default.PlayArrow, null)
+                        Spacer(Modifier.width(12.dp))
+                        Text("Manage Emulators", fontSize = 18.sp)
+                    }
                 }
             }
 

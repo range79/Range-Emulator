@@ -78,6 +78,7 @@ fun AppNavigation(
 
         composable(Screen.Welcome) {
             WelcomeScreen(
+                emulatorVm = emulatorVm,
                 onDownloadDistro = { safeNavigate(Screen.Main) },
                 onStartDistro = { safeNavigate(Screen.EmulatorScreen) },
                 onNavigateToSettings = { safeNavigate(Screen.Settings) },

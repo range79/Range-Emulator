@@ -36,7 +36,7 @@ fun AddNewEmulatorScreen(
     onSave: (VirtualMachineSettings) -> Unit
 ) {
     val context = LocalContext.current
-    var isSavingLocked by remember { mutableStateOf(false) }
+    val isSavingLocked by viewModel.isSavingVm.collectAsState()
 
     val deviceMaxRam = remember { HardwareUtil.getTotalRamMB(context) }
     val deviceMaxCores = remember { HardwareUtil.getTotalCores() }
@@ -73,7 +73,20 @@ fun AddNewEmulatorScreen(
         selectedIsos = (selectedIsos + uris).distinct()
     }
     val directoryPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
-        uri?.let { customDiskPath = it.path ?: context.filesDir.absolutePath }
+        uri?.let { resolvedUri ->
+            val pathStr = resolvedUri.path ?: ""
+            if (pathStr.startsWith("/tree/primary:")) {
+                val folder = pathStr.substringAfter("/tree/primary:")
+                customDiskPath = if (folder.isNotEmpty()) "/storage/emulated/0/$folder" else "/storage/emulated/0"
+            } else if (pathStr.startsWith("/tree/") && pathStr.contains(":")) {
+                val volumeId = pathStr.substringAfter("/tree/").substringBefore(":")
+                val folder = pathStr.substringAfter(":")
+                val volPath = "/storage/$volumeId"
+                customDiskPath = if (folder.isNotEmpty()) "$volPath/$folder" else volPath
+            } else {
+                customDiskPath = context.filesDir.absolutePath
+            }
+        }
     }
 
     LaunchedEffect(isEasyInstallEnabled) {
@@ -95,7 +108,6 @@ fun AddNewEmulatorScreen(
                                     Toast.makeText(context, "Cannot save: KVM is not supported!", Toast.LENGTH_LONG).show()
                                     return@Button
                                 }
-                                isSavingLocked = true
                                 onSave(VirtualMachineSettings(
                                     vmName = vmName,
                                     cpuModel = selectedCpu,

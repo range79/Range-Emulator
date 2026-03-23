@@ -118,6 +118,7 @@ class LinuxViewModel(application: Application) : AndroidViewModel(application) {
             _remainingTime.value = ""
             // Bildirimi duraklatıldı olarak güncelle
             notificationManager.cancel(NOTIFICATION_ID)
+            stopKeepAliveService()
         }
     }
 
@@ -130,6 +131,7 @@ class LinuxViewModel(application: Application) : AndroidViewModel(application) {
         _downloadSpeed.value = "0 KB/s"
         _remainingTime.value = ""
         notificationManager.cancel(NOTIFICATION_ID)
+        stopKeepAliveService()
     }
 
     private fun startDownload(label: String, url: String, isForced: Boolean = false) {
@@ -141,6 +143,7 @@ class LinuxViewModel(application: Application) : AndroidViewModel(application) {
         currentUrl = url
         currentLabel = label
 
+        startKeepAliveService()
         downloadJob?.cancel()
         downloadJob = viewModelScope.launch {
             val settingsFromRepo = settingsFlow.first()
@@ -159,6 +162,7 @@ class LinuxViewModel(application: Application) : AndroidViewModel(application) {
                     _downloadStatus.value = "Error: Connection Lost"
                     _isDownloading.value = false
                     notificationManager.cancel(NOTIFICATION_ID)
+                    stopKeepAliveService()
                 } else if (!_isPaused.value) {
                     val progress = if (total > 0) ((downloaded * 100) / total).toInt() else 0
                     _downloadProgress.value = progress
@@ -184,6 +188,7 @@ class LinuxViewModel(application: Application) : AndroidViewModel(application) {
                         _downloadSpeed.value = "0 KB/s"
                         _remainingTime.value = ""
                         updateNotification(100, label, isFinished = true)
+                        stopKeepAliveService()
                     }
                 }
             }
@@ -201,5 +206,24 @@ class LinuxViewModel(application: Application) : AndroidViewModel(application) {
         super.onCleared()
         repo?.close()
         notificationManager.cancel(NOTIFICATION_ID)
+        stopKeepAliveService()
+    }
+
+    private fun startKeepAliveService() {
+        try {
+            val intent = android.content.Intent(appContext, com.range.phoneLinuxer.service.KeepAliveService::class.java)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                appContext.startForegroundService(intent)
+            } else {
+                appContext.startService(intent)
+            }
+        } catch (e: Exception) {}
+    }
+
+    private fun stopKeepAliveService() {
+        try {
+            val intent = android.content.Intent(appContext, com.range.phoneLinuxer.service.KeepAliveService::class.java)
+            appContext.stopService(intent)
+        } catch (e: Exception) {}
     }
 }
