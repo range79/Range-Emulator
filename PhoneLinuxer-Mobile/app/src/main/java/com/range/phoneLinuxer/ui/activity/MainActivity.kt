@@ -23,12 +23,14 @@ import com.range.phoneLinuxer.ui.theme.PhoneLinuxerTheme
 import com.range.phoneLinuxer.util.AppLogCollector
 import com.range.phoneLinuxer.util.PermissionManager
 import com.range.phoneLinuxer.viewModel.EmulatorViewModel
+import com.range.phoneLinuxer.viewModel.EngineViewModel
 import com.range.phoneLinuxer.viewModel.LinuxViewModel
 import timber.log.Timber
 
 class MainActivity : ComponentActivity() {
     private val linuxVm: LinuxViewModel by viewModels()
     private val emulatorVm: EmulatorViewModel by viewModels()
+    private val engineVm: EngineViewModel by viewModels()
 
     private lateinit var permissionManager: PermissionManager
     private lateinit var settingsRepository: SettingsRepository
@@ -113,6 +115,7 @@ class MainActivity : ComponentActivity() {
                             AppNavigation(
                                 linuxVm = linuxVm,
                                 emulatorVm = emulatorVm,
+                                engineVm = engineVm,
                                 settingsRepository = settingsRepository
                             )
                         }

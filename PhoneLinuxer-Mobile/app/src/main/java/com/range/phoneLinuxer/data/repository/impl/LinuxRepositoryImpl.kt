@@ -59,44 +59,83 @@ class LinuxRepositoryImpl(
                     ?: throw Exception("Could not create file")
             }
 
-            withContext(Dispatchers.IO) {
-                context.contentResolver.openOutputStream(file.uri, "wa")?.use { rawStream ->
-                    BufferedOutputStream(rawStream).use { output ->
-                        client.prepareGet(url) {
-                            if (startByte > 0) {
-                                header(HttpHeaders.Range, "bytes=$startByte-")
-                            }
-                        }.execute { response ->
-                            if (!response.status.isSuccess() && response.status != HttpStatusCode.PartialContent) {
-                                throw Exception("Server error: ${response.status.value}")
-                            }
+            var currentStartByte = startByte
+            var retryCount = 0
+            var isDownloadComplete = false
+            var finalTotalBytes = 0L
 
-                            val contentLength = response.contentLength() ?: 0L
-                            val totalBytes = if (startByte > 0) contentLength + startByte else contentLength
+            while (!isDownloadComplete && retryCount < 1000) {
+                try {
+                    withContext(Dispatchers.IO) {
+                        context.contentResolver.openOutputStream(file.uri, "wa")?.use { rawStream ->
+                            java.io.BufferedOutputStream(rawStream).use { output ->
+                                val urlObj = java.net.URL(url)
+                                var connection: java.net.HttpURLConnection? = null
+                                try {
+                                    connection = urlObj.openConnection() as java.net.HttpURLConnection
+                                    if (currentStartByte > 0) {
+                                        connection.setRequestProperty("Range", "bytes=$currentStartByte-")
+                                    }
+                                    connection.connectTimeout = 30000
+                                    connection.readTimeout = 30000
+                                    connection.connect()
 
-                            val channel = response.bodyAsChannel()
-                            val buffer = ByteArray(64 * 1024)
-                            var bytesCopied = startByte
+                                    val code = connection.responseCode
+                                    if (code == 416) {
+                                        isDownloadComplete = true
+                                        return@withContext
+                                    }
+                                    if (code != 200 && code != 206) {
+                                        throw Exception("Server error: $code")
+                                    }
 
-                            while (!channel.isClosedForRead) {
-                                if (!currentCoroutineContext().isActive) break
+                                    val contentLength = connection.contentLengthLong
+                                    if (finalTotalBytes == 0L && contentLength > 0) {
+                                        finalTotalBytes = if (code == 206) contentLength + currentStartByte else contentLength
+                                    }
 
-                                if (!canDownload(settings)) {
-                                    throw Exception("Mobile data restriction triggered")
+                                    connection.inputStream.use { input ->
+                                        val buffer = ByteArray(64 * 1024)
+                                        var lastEmitTime = 0L
+                                        var read: Int
+
+                                        while (input.read(buffer).also { read = it } != -1) {
+                                            retryCount = 0
+                                            if (!currentCoroutineContext().isActive) {
+                                                isDownloadComplete = true
+                                                break
+                                            }
+                                            if (!canDownload(settings)) {
+                                                throw Exception("Mobile data restriction triggered")
+                                            }
+
+                                            output.write(buffer, 0, read)
+                                            currentStartByte += read
+
+                                            val now = System.currentTimeMillis()
+                                            if (now - lastEmitTime >= 500 || currentStartByte == finalTotalBytes) {
+                                                lastEmitTime = now
+                                                onProgress(currentStartByte, finalTotalBytes, false)
+                                            }
+                                        }
+                                        output.flush()
+
+                                        if (currentStartByte >= finalTotalBytes || code == 200 && contentLength < 0) {
+                                            isDownloadComplete = true
+                                        }
+                                    }
+                                } finally {
+                                    connection?.disconnect()
                                 }
-
-                                val read = channel.readAvailable(buffer)
-                                if (read == -1) break
-
-                                if (read > 0) {
-                                    output.write(buffer, 0, read)
-                                    bytesCopied += read
-                                    onProgress(bytesCopied, totalBytes, false)
-                                }
                             }
-                            output.flush()
                         }
                     }
+                } catch (e: Exception) {
+                    if (e is kotlinx.coroutines.CancellationException) throw e
+                    e.printStackTrace()
+                    retryCount++
+                    if (retryCount >= 1000) throw e
+                    kotlinx.coroutines.delay(5000L)
                 }
             }
         } catch (e: Exception) {

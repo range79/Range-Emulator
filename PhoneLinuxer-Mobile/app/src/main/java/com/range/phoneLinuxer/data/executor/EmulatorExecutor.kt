@@ -1,7 +1,6 @@
 package com.range.phoneLinuxer.data.executor
 
 import android.content.Context
-import android.system.Os
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.SharedFlow
@@ -10,17 +9,6 @@ import timber.log.Timber
 import java.io.File
 import java.io.InputStream
 import java.util.concurrent.ConcurrentHashMap
-import io.ktor.client.HttpClient
-import io.ktor.client.engine.cio.CIO
-import io.ktor.client.plugins.HttpTimeout
-import io.ktor.client.request.header
-import io.ktor.client.request.prepareGet
-import io.ktor.client.statement.bodyAsChannel
-import io.ktor.http.HttpHeaders
-import io.ktor.http.HttpStatusCode
-import io.ktor.http.contentLength
-import io.ktor.http.isSuccess
-import io.ktor.utils.io.readAvailable
 
 class EmulatorExecutor(private val context: Context) {
 
@@ -31,201 +19,22 @@ class EmulatorExecutor(private val context: Context) {
     private val logJobs = ConcurrentHashMap<String, Job>()
     private val _logStreams = ConcurrentHashMap<String, MutableSharedFlow<String>>()
 
-    private val injectLibDir = File(context.filesDir, "injected_libs")
-
-    private val systemBlacklist = listOf(
-        "libEGL.so", "libGLESv1_CM.so", "libGLESv2.so", "libGLESv3.so",
-        "libvulkan.so", "libgui.so", "libui.so", "libandroid.so",
-        "libutils.so", "libc++.so", "libm.so", "libc.so", "libdl.so"
-    )
+    private val libLinker = LibLinker(context)
+    val downloader = EngineDownloader(context)
+    val extractor = EngineExtractor(context)
 
     fun getLogStream(vmId: String): SharedFlow<String> = _logStreams.getOrPut(vmId) {
         MutableSharedFlow(replay = 100, extraBufferCapacity = 500)
     }.asSharedFlow()
 
-    private fun injectAndLinkLibs() {
-        val nativeLibDir = context.applicationInfo.nativeLibraryDir
-
-        try {
-            if (!injectLibDir.exists()) injectLibDir.mkdirs()
-            
-          
-            if (File(injectLibDir, "libqemu_system.so").exists() && File(injectLibDir, "libz.so.1").exists()) return
-            
-            injectLibDir.listFiles()?.forEach { it.delete() }
-
-            File(nativeLibDir).listFiles()?.forEach { file ->
-                val fileName = file.name
-
-                if (systemBlacklist.contains(fileName)) return@forEach
-
-                if (fileName == "libz.so" || fileName == "libz_so_1.so") {
-                    createSymlink(file, "libz.so.1")
-                }
-
-                if (fileName.contains("_so") && fileName.endsWith(".so")) {
-                    val originalName = fileName.substringBeforeLast(".so")
-                        .replace("_so", ".so")
-                        .replace("_", ".")
-                    createSymlink(file, originalName)
-                }
-
-                createSymlink(file, fileName)
-            }
-        } catch (e: Exception) {
-            Timber.tag(TAG).e(e, "Linking failed")
-        }
-    }
-
-    private fun createSymlink(target: File, linkName: String) {
-        val linkFile = File(injectLibDir, linkName)
-        try {
-            Os.symlink(target.absolutePath, linkFile.absolutePath)
-        } catch (e: Exception) {
-            Timber.tag(TAG).v("Symlink skip: $linkName")
-        }
-    }
-
-    private val httpClient = HttpClient(CIO) {
-        install(HttpTimeout) {
-            socketTimeoutMillis = 30000
-            connectTimeoutMillis = 60000
-            requestTimeoutMillis = 100000
-        }
-    }
-
     suspend fun downloadEngineZip(
         url: String,
         allowMobileData: Boolean,
         onProgress: (Long, Long, Boolean, Boolean) -> Unit
-    ) {
-        try {
-            if (!canDownload(allowMobileData)) {
-                onProgress(0, 0, false, true)
-                return
-            }
-            val zipFile = File(context.filesDir, "engine.zip")
-            val startByte = if (zipFile.exists()) zipFile.length() else 0L
+    ) = downloader.download(url, allowMobileData, onProgress)
 
-            withContext(Dispatchers.IO) {
-                java.io.FileOutputStream(zipFile, true).use { rawStream ->
-                    java.io.BufferedOutputStream(rawStream).use { output ->
-                        httpClient.prepareGet(url) {
-                            if (startByte > 0) {
-                                header(HttpHeaders.Range, "bytes=$startByte-")
-                            }
-                        }.execute { response ->
-                            if (!response.status.isSuccess() && response.status != HttpStatusCode.PartialContent) {
-                                throw Exception("Server error: ${response.status.value}")
-                            }
-
-                            val contentLength = response.contentLength() ?: 0L
-                            val totalBytes = if (startByte > 0) contentLength + startByte else contentLength
-
-                            val channel = response.bodyAsChannel()
-                            val buffer = ByteArray(64 * 1024)
-                            var bytesCopied = startByte
-
-                            while (!channel.isClosedForRead) {
-                                if (!kotlinx.coroutines.currentCoroutineContext().isActive) break
-                                if (!canDownload(allowMobileData)) {
-                                    throw Exception("Mobile data restriction triggered")
-                                }
-
-                                val read = channel.readAvailable(buffer)
-                                if (read == -1) break
-                                if (read > 0) {
-                                    output.write(buffer, 0, read)
-                                    bytesCopied += read
-                                    onProgress(bytesCopied, totalBytes, false, false)
-                                }
-                            }
-                            output.flush()
-                        }
-                    }
-                }
-            }
-        } catch (e: Exception) {
-            val isCancelled = e is kotlinx.coroutines.CancellationException
-            if (!isCancelled) {
-                Timber.e(e, "Engine zip download failed")
-                onProgress(0, 0, true, false)
-            }
-        }
-    }
-
-    private fun canDownload(allowMobileData: Boolean): Boolean {
-        val connectivityManager = context.getSystemService(android.content.Context.CONNECTIVITY_SERVICE) as android.net.ConnectivityManager
-        val network = connectivityManager.activeNetwork ?: return false
-        val capabilities = connectivityManager.getNetworkCapabilities(network) ?: return false
-
-        val isMobile = capabilities.hasTransport(android.net.NetworkCapabilities.TRANSPORT_CELLULAR)
-        val isWifi = capabilities.hasTransport(android.net.NetworkCapabilities.TRANSPORT_WIFI) ||
-                capabilities.hasTransport(android.net.NetworkCapabilities.TRANSPORT_ETHERNET)
-
-        return when {
-            isWifi -> true
-            isMobile -> allowMobileData
-            else -> false
-        }
-    }
-
-    suspend fun extractEngineZip(onProgress: (Int) -> Unit): Boolean = withContext(Dispatchers.IO) {
-        try {
-            val zipFile = File(context.filesDir, "engine.zip")
-            if (!zipFile.exists()) return@withContext false
-
-            val zf = java.util.zip.ZipFile(zipFile)
-            val entries = zf.entries().toList()
-            val totalEntries = entries.size
-            if (totalEntries == 0) return@withContext false
-
-            var count = 0
-            var lastProgress = -1
-
-            for (entry in entries) {
-                var targetName = entry.name
-                if (targetName.endsWith(".so")) {
-                    val clean = targetName.removeSuffix(".so")
-                    val soIndex = clean.lastIndexOf("_so_")
-                    if (soIndex != -1) {
-                        val base = clean.substring(0, soIndex)
-                        val rest = clean.substring(soIndex).replace("_", ".")
-                        targetName = base + rest
-                    } else if (clean.endsWith("_0_so")) {
-                        targetName = clean.replace("_0_so", ".0.so")
-                    }
-                }
-
-                val outFile = File(context.filesDir, targetName)
-                if (entry.isDirectory) {
-                    outFile.mkdirs()
-                } else {
-                    outFile.parentFile?.mkdirs()
-                    zf.getInputStream(entry).use { input ->
-                        java.io.FileOutputStream(outFile).use { output ->
-                            input.copyTo(output)
-                        }
-                    }
-                    if (entry.name.endsWith(".so") || entry.name.contains("qemu")) {
-                        outFile.setExecutable(true, false)
-                    }
-                }
-                count++
-                val progress = ((count * 100) / totalEntries).coerceIn(0, 100)
-                if (progress != lastProgress) {
-                    lastProgress = progress
-                    withContext(Dispatchers.Main) { onProgress(progress) }
-                }
-            }
-            zf.close()
-            zipFile.delete()
-            true
-        } catch (e: Exception) {
-            Timber.e(e, "Extraction failed")
-            false
-        }
-    }
+    suspend fun extractEngineZip(onProgress: (Int) -> Unit): Boolean =
+        extractor.extract(onProgress)
 
     suspend fun executeCommand(
         vmId: String,
@@ -235,30 +44,62 @@ class EmulatorExecutor(private val context: Context) {
         if (isAlive(vmId)) return@withContext Result.failure(Exception("Already running"))
 
         try {
-            injectAndLinkLibs()
-            injectAndLinkLibs()
+            libLinker.injectAndLink()
 
-            val qemuBinary = File(context.applicationInfo.nativeLibraryDir, "libqemu_system.so")
+            val qemuInFilesDir = File(context.filesDir, "libqemu_system.so")
+            val qemuInNativeDir = File(context.applicationInfo.nativeLibraryDir, "libqemu_system.so")
+            val qemuBinary = when {
+                qemuInNativeDir.exists() -> {
+                    if (qemuInFilesDir.exists()) qemuInFilesDir.delete()
+                    qemuInNativeDir
+                }
+                qemuInFilesDir.exists() -> qemuInFilesDir
+                else -> throw Exception("QEMU engine not found. Please download the engine first.")
+            }
             qemuBinary.setExecutable(true, false)
-            
+
             val biosDir = File(context.filesDir, "pc-bios")
-            val patchedCommand = fullCommand.toMutableList().apply {
-                this[0] = qemuBinary.absolutePath
-                add(1, "-L")
-                add(2, biosDir.absolutePath)
+            val patchedCommand = mutableListOf<String>().apply {
+                val linker = if (System.getProperty("os.arch")?.contains("64") == true) "/system/bin/linker64" else "/system/bin/linker"
+                add(linker)
+                add(qemuBinary.absolutePath)
+                addAll(fullCommand.drop(1))
+                add("-L")
+                add(biosDir.absolutePath)
             }
 
             val pb = ProcessBuilder(patchedCommand)
             val env = pb.environment()
 
             val nativeLibDir = context.applicationInfo.nativeLibraryDir
+            val injectLibDir = libLinker.injectLibDir
+            
             val ldPath = "${injectLibDir.absolutePath}:${context.filesDir.absolutePath}:$nativeLibDir:/system/lib64:/vendor/lib64"
             env["LD_LIBRARY_PATH"] = ldPath
 
-            val libz = File(injectLibDir, "libz.so.1")
-            if (libz.exists()) {
-                env["LD_PRELOAD"] = libz.absolutePath
-                Timber.tag(TAG).i(" Force-loading libz: ${libz.absolutePath}")
+            val preloads = mutableListOf<String>()
+            // Critical libs first: libz.so must be preloaded before libgnutls.so to satisfy verneed
+            val criticalLibs = listOf(
+                "libz.so.1", "libz.so",
+                "libnettle.so.8", "libnettle.so",
+                "libhogweed.so.6", "libhogweed.so",
+                "libgmp.so",
+                "libidn2.so", "libunistring.so",
+                "libgnutls.so.30", "libgnutls.so",
+                "libglib-2.0.so.0", "libglib-2.0.so"
+            )
+
+            criticalLibs.forEach { name ->
+                val file = File(injectLibDir, name)
+                if (file.exists()) preloads.add(file.absolutePath)
+            }
+            // NOTE: We intentionally do NOT add all injectLibDir files to LD_PRELOAD.
+            // LD_LIBRARY_PATH already covers injectLibDir and filesDir, so all other
+            // libs are found on-demand. Preloading everything causes Android system
+            // libs (libunwindstack, libgui, etc.) to pick up wrong symbols.
+
+            if (preloads.isNotEmpty()) {
+                env["LD_PRELOAD"] = preloads.joinToString(":")
             }
 
             env["PROOT_TMP_DIR"] = context.cacheDir.absolutePath
@@ -268,6 +109,8 @@ class EmulatorExecutor(private val context: Context) {
             pb.directory(context.filesDir)
             pb.redirectErrorStream(true)
 
+            _logStreams.getOrPut(vmId) { MutableSharedFlow(replay = 100, extraBufferCapacity = 500) }
+
             val process = pb.start()
             runningProcesses[vmId] = process
             logJobs[vmId] = launchLogReader(vmId, process.inputStream)
@@ -276,8 +119,12 @@ class EmulatorExecutor(private val context: Context) {
                 executorScope.launch {
                     try {
                         val exitCode = process.waitFor()
+                        if (exitCode != 0 && exitCode != 143 && exitCode != 137) {
+                            Timber.tag(TAG).e("VM $vmId exited with error code $exitCode")
+                        }
                         onExit(exitCode)
                     } catch (e: Exception) {
+                        Timber.tag(TAG).e(e, "VM $vmId waitFor failed")
                         onExit(-1)
                     }
                 }
@@ -285,6 +132,9 @@ class EmulatorExecutor(private val context: Context) {
 
             Result.success(1L)
         } catch (e: Exception) {
+            Timber.tag(TAG).e(e, "executeCommand failed for $vmId")
+            val flow = _logStreams.getOrPut(vmId) { MutableSharedFlow(replay = 100, extraBufferCapacity = 500) }
+            executorScope.launch { flow.emit("LAUNCH ERROR: ${e.message}") }
             Result.failure(e)
         }
     }
@@ -295,9 +145,13 @@ class EmulatorExecutor(private val context: Context) {
             inputStream.bufferedReader().use { reader ->
                 while (isActive) {
                     val line = withContext(Dispatchers.IO) { reader.readLine() } ?: break
+                    Timber.tag(TAG).d("[$vmId] $line")
                     flow.emit(line)
                 }
             }
+        } catch (e: Exception) {
+            Timber.tag(TAG).e(e, "Log reader error for $vmId")
+            flow.emit("LOG READER ERROR: ${e.message}")
         } finally { cleanup(vmId) }
     }
 
@@ -308,39 +162,25 @@ class EmulatorExecutor(private val context: Context) {
             if (process != null) {
                 try { process.destroy() } catch (t: Throwable) {}
                 executorScope.launch {
-                    try {
-                        delay(500)
-                        process.destroy()
-                    } catch (t: Throwable) {}
+                    try { delay(500); process.destroy() } catch (t: Throwable) {}
                 }
             }
         } catch (t: Throwable) {
             Timber.tag(TAG).e(t, "Kill process error")
-        } finally {
-            cleanup(vmId)
-        }
+        } finally { cleanup(vmId) }
     }
 
-    fun killAll() {
-        if (runningProcesses.isNotEmpty()) {
-            runningProcesses.keys.forEach { killProcess(it) }
-        }
+    fun killAll() = runningProcesses.keys.forEach { killProcess(it) }
+
+    fun isAlive(vmId: String): Boolean {
+        val process = runningProcesses[vmId] ?: return false
+        return try { process.exitValue(); false }
+        catch (e: IllegalThreadStateException) { true }
+        catch (t: Throwable) { false }
     }
 
     private fun cleanup(vmId: String) {
         runningProcesses.remove(vmId)
         logJobs.remove(vmId)
-    }
-
-    fun isAlive(vmId: String): Boolean {
-        val process = runningProcesses[vmId] ?: return false
-        return try {
-            process.exitValue()
-            false
-        } catch (e: IllegalThreadStateException) {
-            true
-        } catch (t: Throwable) {
-            false
-        }
     }
 }

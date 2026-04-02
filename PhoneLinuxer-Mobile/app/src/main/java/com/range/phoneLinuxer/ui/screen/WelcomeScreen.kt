@@ -52,6 +52,7 @@ import com.range.phoneLinuxer.viewModel.EmulatorViewModel
 @Composable
 fun WelcomeScreen(
     emulatorVm: EmulatorViewModel,
+    engineVm: com.range.phoneLinuxer.viewModel.EngineViewModel,
     onDownloadDistro: () -> Unit,
     onStartDistro: () -> Unit,
     onNavigateToSettings: () -> Unit,
@@ -60,20 +61,48 @@ fun WelcomeScreen(
     val context = LocalContext.current
     var showSupportDialog by remember { mutableStateOf(false) }
     var showEngineDialog by remember { mutableStateOf(false) }
+    var updateAvailableEvent by remember { mutableStateOf<com.range.phoneLinuxer.viewModel.EngineViewModel.EngineEvent.UpdateAvailable?>(null) }
 
-    val isEngineDownloaded by emulatorVm.isEngineDownloaded.collectAsState()
-    val isEngineDownloading by emulatorVm.isEngineDownloading.collectAsState()
-    val isEnginePaused by emulatorVm.isEnginePaused.collectAsState()
-    val downloadProgress by emulatorVm.engineDownloadProgress.collectAsState()
+    val isEngineDownloaded by engineVm.isEngineDownloaded.collectAsState()
+    val isEngineDownloading by engineVm.isEngineDownloading.collectAsState()
+    val isEnginePaused by engineVm.isEnginePaused.collectAsState()
+    val downloadProgress by engineVm.engineDownloadProgress.collectAsState()
 
     LaunchedEffect(Unit) {
         if (!isEngineDownloaded) {
-            emulatorVm.prepareLatestEngineOTA()
+            engineVm.prepareLatestEngineOTA()
+        } else {
+            engineVm.checkForEngineUpdate()
+        }
+        engineVm.event.collect { event ->
+            if (event is com.range.phoneLinuxer.viewModel.EngineViewModel.EngineEvent.UpdateAvailable) {
+                updateAvailableEvent = event
+            }
         }
     }
 
     if (showEngineDialog) {
-        EngineDownloadDialog(emulatorVm = emulatorVm, onDismiss = { showEngineDialog = false })
+        EngineDownloadDialog(engineVm = engineVm, onDismiss = { showEngineDialog = false })
+    }
+
+    updateAvailableEvent?.let { update ->
+        AlertDialog(
+            onDismissRequest = { updateAvailableEvent = null },
+            title = { Text("Engine Update Available") },
+            text = {
+                Text("A newer QEMU engine (${update.newVersion}) is available (~${update.sizeMB} MB).\nWould you like to update or continue with the current version?")
+            },
+            confirmButton = {
+                Button(onClick = {
+                    updateAvailableEvent = null
+                    engineVm.setEngineTargetUrl(update.downloadUrl, update.sizeMB)
+                    showEngineDialog = true
+                }) { Text("Update") }
+            },
+            dismissButton = {
+                TextButton(onClick = { updateAvailableEvent = null }) { Text("Continue with current") }
+            }
+        )
     }
 
     if (showSupportDialog) {

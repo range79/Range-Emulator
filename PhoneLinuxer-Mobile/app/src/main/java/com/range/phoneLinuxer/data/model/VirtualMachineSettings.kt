@@ -38,7 +38,7 @@ fun VirtualMachineSettings.buildFullCommand(isSetupMode: Boolean = false): List<
     cmd.add("qemu_executable")
 
     cmd.add("-machine")
-    cmd.add("virt,highmem=off")
+    cmd.add("virt")
 
     cmd.add("-cpu")
     cmd.add(if (cpuModel == CpuModel.HOST) "host" else cpuModel.toQemuParam())
@@ -46,39 +46,48 @@ fun VirtualMachineSettings.buildFullCommand(isSetupMode: Boolean = false): List<
     cmd.add("-accel")
     cmd.add("tcg,thread=multi")
 
+    // Use virtio-scsi-pci for all optical and disk drives for better EFI compatibility
+    cmd.add("-device")
+    cmd.add("virtio-scsi-pci,id=scsi0")
+
     cmd.add("-smp")
     cmd.add(cpuCores.toString())
     cmd.add("-m")
     cmd.add(ramMB.toString())
 
-    if (isSetupMode || easyInstall) {
+    // Always include ISOs if present, or if in setup mode
+    if (isoUris.isNotEmpty() || isSetupMode || easyInstall) {
         isoUris.forEachIndexed { index, uri ->
-            if (index == 0) {
-                cmd.add("-cdrom")
-                cmd.add(uri)
-            } else {
-                cmd.add("-drive")
-                cmd.add("file=$uri,media=cdrom,if=none,id=cd$index")
-                cmd.add("-device")
-                cmd.add("virtio-blk-pci,drive=cd$index")
-            }
+            cmd.add("-drive")
+            cmd.add("file=$uri,format=raw,if=none,id=cd$index,readonly=on")
+            cmd.add("-device")
+            // Use bootindex for AArch64 virt machine instead of -boot order
+            cmd.add("scsi-cd,drive=cd$index,bus=scsi0.0,bootindex=${index}")
         }
     }
 
     diskImgPath?.let {
         val formatName = diskFormat.name.lowercase()
         cmd.add("-drive")
-        cmd.add("file=$it,format=$formatName,if=virtio,cache=writeback")
+        cmd.add("file=$it,format=$formatName,if=none,id=drive0,cache=writeback")
+        cmd.add("-device")
+        // Hard disk gets a lower priority boot index than CD-ROMs
+        cmd.add("scsi-hd,drive=drive0,bus=scsi0.0,bootindex=${isoUris.size + 10}")
     }
 
     cmd.addAll(getDisplayArgs())
 
     cmd.addAll(getNetworkArgs())
 
+    // Add XHCI USB controller for input devices and better peripheral support
     cmd.add("-device")
-    cmd.add("virtio-tablet-pci")
+    cmd.add("qemu-xhci,id=usb")
+    
+    // USB-based input devices are more universally supported than VirtIO-PCI in early boot/installers
     cmd.add("-device")
-    cmd.add("virtio-keyboard-pci")
+    cmd.add("usb-tablet,bus=usb.0")
+    cmd.add("-device")
+    cmd.add("usb-kbd,bus=usb.0")
 
     cmd.add("-serial")
     cmd.add("stdio")
@@ -109,7 +118,7 @@ private fun VirtualMachineSettings.getDisplayArgs(): List<String> {
 
     val vncIndex = vncPort - 5900
 
-    if (easyInstall) {
+    if (easyInstall && screenType != ScreenType.VNC) {
         args.add("-display")
         args.add("none")
         if (isGpuEnabled) {
@@ -118,12 +127,21 @@ private fun VirtualMachineSettings.getDisplayArgs(): List<String> {
         }
     } else {
         if (screenType == ScreenType.VNC) {
+            // Switch back to -display vnc syntax which often bridges device heads more effectively
             args.add("-display")
-            args.add("vnc=127.0.0.1:$vncIndex")
+            args.add("vnc=0.0.0.0:$vncIndex")
+
+            // Explicitly disable default VGA to avoid conflicts on ARM virt machine
+            args.add("-vga")
+            args.add("none")
+
+            // Add BIOS for ARM virt machine boot support
+            args.add("-bios")
+            args.add("edk2-aarch64-code.fd")
 
             if (isGpuEnabled) {
                 args.add("-device")
-                args.add("virtio-gpu-pci,xres=$screenWidth,yres=$screenHeight")
+                args.add("virtio-gpu-pci,xres=$screenWidth,yres=$screenHeight,edid=on")
             } else {
                 args.add("-device")
                 args.add("ramfb")

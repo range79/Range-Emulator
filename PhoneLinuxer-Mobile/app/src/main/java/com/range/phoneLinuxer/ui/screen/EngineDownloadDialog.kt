@@ -13,27 +13,27 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
-import com.range.phoneLinuxer.viewModel.EmulatorViewModel
+import com.range.phoneLinuxer.viewModel.EngineViewModel
 
 @Composable
 fun EngineDownloadDialog(
-    emulatorVm: EmulatorViewModel,
+    engineVm: EngineViewModel,
     onDismiss: () -> Unit
 ) {
-    val isDownloading by emulatorVm.isEngineDownloading.collectAsState()
-    val isPaused by emulatorVm.isEnginePaused.collectAsState()
-    val status by emulatorVm.engineDownloadStatus.collectAsState()
-    val speed by emulatorVm.engineDownloadSpeed.collectAsState()
-    val remaining by emulatorVm.engineRemainingTime.collectAsState()
-    val progress by emulatorVm.engineDownloadProgress.collectAsState()
-    val showMobileWarning by emulatorVm.showEngineMobileDataWarning.collectAsState()
-    val targetSizeMB by emulatorVm.engineTargetSizeMB.collectAsState()
+    val isDownloading by engineVm.isEngineDownloading.collectAsState()
+    val isPaused by engineVm.isEnginePaused.collectAsState()
+    val status by engineVm.engineDownloadStatus.collectAsState()
+    val speed by engineVm.engineDownloadSpeed.collectAsState()
+    val remaining by engineVm.engineRemainingTime.collectAsState()
+    val progress by engineVm.engineDownloadProgress.collectAsState()
+    val showMobileWarning by engineVm.showMobileDataWarning.collectAsState()
+    val targetSizeMB by engineVm.engineTargetSizeMB.collectAsState()
 
     var showConfirmDialog by remember { mutableStateOf(true) }
 
     if (showMobileWarning) {
         AlertDialog(
-            onDismissRequest = { emulatorVm.dismissEngineMobileDataWarning() },
+            onDismissRequest = { engineVm.dismissMobileDataWarning() },
             title = {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Icon(Icons.Default.Warning, contentDescription = null, tint = MaterialTheme.colorScheme.error)
@@ -44,36 +44,27 @@ fun EngineDownloadDialog(
             text = { Text("Downloading QEMU Engine ($targetSizeMB MB) over mobile data is forbidden by your settings. Download anyway?") },
             confirmButton = {
                 Button(onClick = {
-                    emulatorVm.dismissEngineMobileDataWarning()
-                    emulatorVm.downloadQemuEngine(forceMobileData = true)
+                    engineVm.dismissMobileDataWarning()
+                    engineVm.downloadEngine(forceMobileData = true)
                 }) { Text("Download Anyway") }
             },
             dismissButton = {
                 TextButton(onClick = {
-                    emulatorVm.dismissEngineMobileDataWarning()
+                    engineVm.dismissMobileDataWarning()
                     if (!isDownloading) onDismiss()
                 }) { Text("Cancel") }
             }
         )
     } else if (showConfirmDialog && !isDownloading && !isPaused && progress == 0) {
         AlertDialog(
-            onDismissRequest = {
-                showConfirmDialog = false
-                onDismiss()
-            },
+            onDismissRequest = { showConfirmDialog = false; onDismiss() },
             title = { Text("Download Virtual Engine") },
             text = { Text("This will download the QEMU Virtual Machine Engine (approx. $targetSizeMB MB). Are you sure you want to proceed?") },
             confirmButton = {
-                Button(onClick = {
-                    showConfirmDialog = false
-                    emulatorVm.downloadQemuEngine()
-                }) { Text("Start Download") }
+                Button(onClick = { showConfirmDialog = false; engineVm.downloadEngine() }) { Text("Start Download") }
             },
             dismissButton = {
-                TextButton(onClick = {
-                    showConfirmDialog = false
-                    onDismiss()
-                }) { Text("Cancel") }
+                TextButton(onClick = { showConfirmDialog = false; onDismiss() }) { Text("Cancel") }
             }
         )
     } else if (isDownloading || isPaused || progress > 0) {
@@ -98,21 +89,16 @@ fun EngineDownloadDialog(
             },
             confirmButton = {
                 if (!status.contains("Extracting")) {
-                    Button(onClick = { emulatorVm.toggleEnginePauseResume() }) {
+                    Button(onClick = { engineVm.togglePauseResume() }) {
                         Text(if (isPaused) "Resume" else "Pause")
                     }
                 } else {
-                    Button(onClick = {}, enabled = false) {
-                        Text("Please Wait")
-                    }
+                    Button(onClick = {}, enabled = false) { Text("Please Wait") }
                 }
             },
             dismissButton = {
                 if (!status.contains("Extracting")) {
-                    TextButton(onClick = {
-                        emulatorVm.cancelEngineDownload()
-                        onDismiss()
-                    }) { Text("Cancel") }
+                    TextButton(onClick = { engineVm.cancelDownload(); onDismiss() }) { Text("Cancel") }
                 }
             }
         )

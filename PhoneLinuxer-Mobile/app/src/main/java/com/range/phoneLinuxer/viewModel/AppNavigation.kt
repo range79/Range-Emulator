@@ -20,6 +20,7 @@ import com.range.phoneLinuxer.ui.screen.settings.SettingsScreen
 import com.range.phoneLinuxer.util.NavDebouncer
 import com.range.phoneLinuxer.viewModel.LinuxViewModel
 import com.range.phoneLinuxer.viewModel.EmulatorViewModel
+import com.range.phoneLinuxer.viewModel.EngineViewModel
 
 object Screen {
     const val Welcome = "welcome"
@@ -37,6 +38,7 @@ object Screen {
 fun AppNavigation(
     linuxVm: LinuxViewModel,
     emulatorVm: EmulatorViewModel,
+    engineVm: EngineViewModel,
     settingsRepository: SettingsRepository
 ) {
     val navController = rememberNavController()
@@ -79,6 +81,7 @@ fun AppNavigation(
         composable(Screen.Welcome) {
             WelcomeScreen(
                 emulatorVm = emulatorVm,
+                engineVm = engineVm,
                 onDownloadDistro = { safeNavigate(Screen.Main) },
                 onStartDistro = { safeNavigate(Screen.EmulatorScreen) },
                 onNavigateToSettings = { safeNavigate(Screen.Settings) },

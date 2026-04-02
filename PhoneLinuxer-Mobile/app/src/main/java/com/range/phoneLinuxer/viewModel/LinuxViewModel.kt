@@ -24,7 +24,6 @@ import kotlinx.coroutines.launch
 class LinuxViewModel(application: Application) : AndroidViewModel(application) {
     private val appContext = getApplication<Application>().applicationContext
 
-    // Notification Manager Tanımlamaları
     private val notificationManager = appContext.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
     private val CHANNEL_ID = "DOWNLOAD_CHANNEL"
     private val NOTIFICATION_ID = 101
@@ -35,7 +34,7 @@ class LinuxViewModel(application: Application) : AndroidViewModel(application) {
     private var repo: LinuxRepositoryImpl? = null
     private var downloadJob: Job? = null
 
-    // UI State'leri
+
     private val _downloadPath = MutableStateFlow<Uri?>(null)
     val downloadPath = _downloadPath.asStateFlow()
 
@@ -59,31 +58,43 @@ class LinuxViewModel(application: Application) : AndroidViewModel(application) {
 
     private var currentUrl = ""
     private var currentLabel = ""
+    private var lastNotifyTime = 0L
 
     init {
         createNotificationChannel()
     }
 
     private fun createNotificationChannel() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val channel = NotificationChannel(
-                CHANNEL_ID, "Linux Downloads",
-                NotificationManager.IMPORTANCE_LOW
-            ).apply { description = "Shows progress of ISO downloads" }
-            notificationManager.createNotificationChannel(channel)
-        }
+        val channel = NotificationChannel(
+            CHANNEL_ID, "Linux Downloads",
+            NotificationManager.IMPORTANCE_LOW
+        ).apply { description = "Shows progress of ISO downloads" }
+        notificationManager.createNotificationChannel(channel)
     }
 
-    // Bildirimi Güncelleyen Fonksiyon
+
     private fun updateNotification(progress: Int, label: String, isFinished: Boolean = false) {
+        val launchIntent = android.content.Intent(appContext, com.range.phoneLinuxer.ui.activity.MainActivity::class.java).apply {
+            action = android.content.Intent.ACTION_MAIN
+            addCategory(android.content.Intent.CATEGORY_LAUNCHER)
+            addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK or android.content.Intent.FLAG_ACTIVITY_CLEAR_TOP or android.content.Intent.FLAG_ACTIVITY_SINGLE_TOP)
+        }
+        val pendingIntent = android.app.PendingIntent.getActivity(
+            appContext,
+            System.currentTimeMillis().toInt(),
+            launchIntent,
+            android.app.PendingIntent.FLAG_IMMUTABLE or android.app.PendingIntent.FLAG_UPDATE_CURRENT
+        )
+
         val builder = NotificationCompat.Builder(appContext, CHANNEL_ID)
-            .setSmallIcon(android.R.drawable.stat_sys_download) // Geçici ikon, R.drawable.ic_download ile değiştir
-            .setContentTitle(if (isFinished) "Download Complete" else "Downloading $label")
+            .setSmallIcon(android.R.drawable.stat_sys_download)
+            .setContentTitle(if (isFinished) "Download Finished" else "Downloading $label")
             .setOngoing(!isFinished)
             .setOnlyAlertOnce(true)
+            .setContentIntent(pendingIntent)
 
         if (isFinished) {
-            builder.setContentText("$label is ready to use.")
+            builder.setContentText("Download Finished")
                 .setProgress(0, 0, false)
         } else {
             builder.setContentText("$progress% completed - ${_downloadSpeed.value}")
@@ -116,7 +127,6 @@ class LinuxViewModel(application: Application) : AndroidViewModel(application) {
             _downloadStatus.value = "Paused"
             _downloadSpeed.value = "0 KB/s"
             _remainingTime.value = ""
-            // Bildirimi duraklatıldı olarak güncelle
             notificationManager.cancel(NOTIFICATION_ID)
             stopKeepAliveService()
         }
@@ -152,7 +162,6 @@ class LinuxViewModel(application: Application) : AndroidViewModel(application) {
             _isDownloading.value = true
             _downloadStatus.value = "Starting download... Check notifications."
 
-            // İlk bildirimi gönder
             updateNotification(0, label)
 
             val startTime = System.currentTimeMillis()
@@ -179,11 +188,14 @@ class LinuxViewModel(application: Application) : AndroidViewModel(application) {
                         }
                     }
 
-                    // BİLDİRİMİ GÜNCELLE
-                    updateNotification(progress, label)
+                    val now = System.currentTimeMillis()
+                    if (now - lastNotifyTime >= 1000 || progress == 100) {
+                        lastNotifyTime = now
+                        updateNotification(progress, label)
+                    }
 
                     if (progress == 100) {
-                        _downloadStatus.value = "Success: $label ready"
+                        _downloadStatus.value = "Download Finished"
                         _isDownloading.value = false
                         _downloadSpeed.value = "0 KB/s"
                         _remainingTime.value = ""
