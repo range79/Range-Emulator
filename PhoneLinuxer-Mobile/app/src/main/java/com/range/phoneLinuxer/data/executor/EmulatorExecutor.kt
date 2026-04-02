@@ -78,7 +78,6 @@ class EmulatorExecutor(private val context: Context) {
             env["LD_LIBRARY_PATH"] = ldPath
 
             val preloads = mutableListOf<String>()
-            // Critical libs first: libz.so must be preloaded before libgnutls.so to satisfy verneed
             val criticalLibs = listOf(
                 "libz.so.1", "libz.so",
                 "libnettle.so.8", "libnettle.so",
@@ -93,10 +92,6 @@ class EmulatorExecutor(private val context: Context) {
                 val file = File(injectLibDir, name)
                 if (file.exists()) preloads.add(file.absolutePath)
             }
-            // NOTE: We intentionally do NOT add all injectLibDir files to LD_PRELOAD.
-            // LD_LIBRARY_PATH already covers injectLibDir and filesDir, so all other
-            // libs are found on-demand. Preloading everything causes Android system
-            // libs (libunwindstack, libgui, etc.) to pick up wrong symbols.
 
             if (preloads.isNotEmpty()) {
                 env["LD_PRELOAD"] = preloads.joinToString(":")
@@ -178,6 +173,8 @@ class EmulatorExecutor(private val context: Context) {
         catch (e: IllegalThreadStateException) { true }
         catch (t: Throwable) { false }
     }
+
+    fun hasRunningProcesses(): Boolean = runningProcesses.isNotEmpty()
 
     private fun cleanup(vmId: String) {
         runningProcesses.remove(vmId)

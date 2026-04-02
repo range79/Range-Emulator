@@ -16,7 +16,6 @@ object UriHelper {
         val destFile = File(context.cacheDir, fileName)
 
         if (destFile.exists() && destFile.length() > 0) {
-            // Already cached. In a real app we might want to check if it's the SAME file.
             return@withContext destFile.absolutePath
         }
 
@@ -29,7 +28,7 @@ object UriHelper {
             return@withContext destFile.absolutePath
         } catch (e: Exception) {
             Timber.e(e, "Failed to copy URI to cache: $uriString")
-            return@withContext uriString // Fallback to original and let it fail in QEMU if necessary
+            uriString
         }
     }
 

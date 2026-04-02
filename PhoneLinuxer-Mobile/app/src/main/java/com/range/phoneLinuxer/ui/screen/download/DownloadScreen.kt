@@ -8,6 +8,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.*
@@ -42,13 +43,14 @@ fun DownloadScreen(
     val isPaused by vm.isPaused.collectAsState()
     val downloadSpeed by vm.downloadSpeed.collectAsState()
     val remainingTime by vm.remainingTime.collectAsState()
+    val availableDistros by vm.availableDistros.collectAsState()
 
     val networkObserver = remember { NetworkObserver(context) }
     val networkStatus by networkObserver.observe.collectAsState(initial = NetworkObserver.Status.Available)
     val isOnline = networkStatus == NetworkObserver.Status.Available
 
     var showMobileDataWarning by remember { mutableStateOf(false) }
-    var selectedOsToDownload by remember { mutableStateOf<String?>(null) }
+    var selectedDistroToDownload by remember { mutableStateOf<com.range.phoneLinuxer.data.model.LinuxDistro?>(null) }
 
     val launcher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocumentTree()
@@ -60,9 +62,8 @@ fun DownloadScreen(
         return capabilities?.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR) == true
     }
 
-    fun triggerDownload(os: String, force: Boolean = false) {
-        if (os == "ARCH") vm.downloadArch(force)
-        else if (os == "UBUNTU") vm.downloadUbuntu(force)
+    fun triggerDownload(distro: com.range.phoneLinuxer.data.model.LinuxDistro, force: Boolean = false) {
+        vm.startDownload(distro, force)
     }
 
     Scaffold(
@@ -114,21 +115,21 @@ fun DownloadScreen(
 
             val btnEnabled = isOnline && !isDownloading && !isPaused && downloadPath != null
 
-            LinuxDownloadButton("Download Arch Linux ARM", btnEnabled) {
-                if (isCellularActive() && !settings.allowDownloadOnMobileData) {
-                    selectedOsToDownload = "ARCH"; showMobileDataWarning = true
-                } else triggerDownload("ARCH")
+            LazyColumn(
+                modifier = Modifier.weight(1f).fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
+                items(availableDistros) { distro ->
+                    LinuxDownloadButton(distro.name, btnEnabled) {
+                        if (isCellularActive() && !settings.allowDownloadOnMobileData) {
+                            selectedDistroToDownload = distro
+                            showMobileDataWarning = true
+                        } else triggerDownload(distro)
+                    }
+                }
             }
 
             Spacer(Modifier.height(16.dp))
-
-            LinuxDownloadButton("Download Ubuntu 24.04 (LTS)", btnEnabled) {
-                if (isCellularActive() && !settings.allowDownloadOnMobileData) {
-                    selectedOsToDownload = "UBUNTU"; showMobileDataWarning = true
-                } else triggerDownload("UBUNTU")
-            }
-
-            Spacer(Modifier.weight(1f))
 
             AnimatedVisibility(
                 visible = isDownloading || isPaused || progress > 0,
@@ -152,11 +153,11 @@ fun DownloadScreen(
     if (showMobileDataWarning) {
         MobileDataWarningDialog(
             onConfirm = {
-                selectedOsToDownload?.let { triggerDownload(it, force = true) }
+                selectedDistroToDownload?.let { triggerDownload(it, force = true) }
                 showMobileDataWarning = false
-                selectedOsToDownload = null
+                selectedDistroToDownload = null
             },
-            onDismiss = { showMobileDataWarning = false; selectedOsToDownload = null }
+            onDismiss = { showMobileDataWarning = false; selectedDistroToDownload = null }
         )
     }
 }

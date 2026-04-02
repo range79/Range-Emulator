@@ -39,11 +39,11 @@ fun VmControlScreen(
     val vms by viewModel.vms.collectAsState()
     val currentVm = vms.find { it.id == vmId }
 
-    val isRdp = currentVm?.screenType == ScreenType.RDP
-    val protocolName = if (isRdp) "RDP" else "VNC"
+    val isSpice = currentVm?.screenType == ScreenType.SPICE
+    val protocolName = if (isSpice) "SPICE" else "VNC"
 
-    val portValue = if (isRdp) {
-        currentVm.rdpPort.toString()
+    val portValue = if (isSpice) {
+        currentVm.spicePort.toString()
     } else {
         currentVm?.vncPort.toString()
     }
@@ -75,7 +75,7 @@ fun VmControlScreen(
             ) {
                 Box(contentAlignment = Alignment.Center) {
                     Icon(
-                        imageVector = if (isRdp) Icons.Default.DesktopWindows else Icons.Default.SettingsInputComponent,
+                        imageVector = if (isSpice) Icons.Default.Monitor else Icons.Default.SettingsInputComponent,
                         contentDescription = null,
                         modifier = Modifier.size(48.dp),
                         tint = Color.White
@@ -136,7 +136,7 @@ fun VmControlScreen(
 
                     ControlInfoRow(
                         label = "Protocol",
-                        value = if (isRdp) "RDP (Remote Desktop)" else "VNC (RFB Protocol)"
+                        value = if (isSpice) "SPICE (Simple Protocol for IDM)" else "VNC (RFB Protocol)"
                     )
                 }
             }

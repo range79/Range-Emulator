@@ -5,12 +5,12 @@ import kotlinx.serialization.Serializable
 @Serializable
 enum class ScreenType {
     VNC,
-    RDP;
+    SPICE;
 
     fun getDescription(): String {
         return when (this) {
             VNC -> "Universal compatibility. Standard for most Linux distros."
-            RDP -> "High performance. Best for Windows or optimized Linux desktops."
+            SPICE -> "Optimized for Linux. Supports clipboard, folder sharing and guest agent."
         }
     }
 }

@@ -16,6 +16,16 @@ object HardwareUtil {
         }
     }
 
+    fun isGpuAccelerationSupported(context: Context): Boolean {
+        return try {
+            val activityManager = context.getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
+            val configurationInfo = activityManager.deviceConfigurationInfo
+            configurationInfo.reqGlEsVersion >= 0x30000
+        } catch (e: Exception) {
+            false
+        }
+    }
+
     fun getTotalRamMB(context: Context): Int {
         return try {
             val actManager = context.getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager

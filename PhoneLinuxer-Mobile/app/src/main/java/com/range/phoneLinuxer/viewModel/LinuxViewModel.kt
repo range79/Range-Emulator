@@ -56,8 +56,37 @@ class LinuxViewModel(application: Application) : AndroidViewModel(application) {
     private val _remainingTime = MutableStateFlow("")
     val remainingTime = _remainingTime.asStateFlow()
 
-    private var currentUrl = ""
-    private var currentLabel = ""
+    private val _availableDistros = MutableStateFlow<List<com.range.phoneLinuxer.data.model.LinuxDistro>>(
+        listOf(
+            com.range.phoneLinuxer.data.model.LinuxDistro(
+                id = "ARCH",
+                name = "Arch Linux ARM",
+                description = "Minimal, rolling release. Perfect for advanced users.",
+                url = "http://mirror.archlinuxarm.org/os/ArchLinuxARM-aarch64-latest.tar.gz"
+            ),
+            com.range.phoneLinuxer.data.model.LinuxDistro(
+                id = "UBUNTU",
+                name = "Ubuntu 24.04 (LTS)",
+                description = "Popular, stable and widely supported.",
+                url = "https://cdimage.ubuntu.com/ubuntu-server/noble/daily-live/current/noble-live-server-arm64.iso"
+            ),
+            com.range.phoneLinuxer.data.model.LinuxDistro(
+                id = "DEBIAN",
+                name = "Debian 12 (Stable)",
+                description = "The rock-solid foundation. Very stable and clean.",
+                url = "https://cdimage.debian.org/debian-cd/current/arm64/iso-cd/debian-12.5.0-arm64-netinst.iso"
+            ),
+            com.range.phoneLinuxer.data.model.LinuxDistro(
+                id = "ALPINE",
+                name = "Alpine Linux",
+                description = "Tiny, lightning fast and secure. Boots in seconds.",
+                url = "https://dl-cdn.alpinelinux.org/alpine/v3.19/releases/aarch64/alpine-standard-3.19.1-aarch64.iso"
+            )
+        )
+    )
+    val availableDistros = _availableDistros.asStateFlow()
+
+    private var currentDistro: com.range.phoneLinuxer.data.model.LinuxDistro? = null
     private var lastNotifyTime = 0L
 
     init {
@@ -109,18 +138,15 @@ class LinuxViewModel(application: Application) : AndroidViewModel(application) {
         repo = LinuxRepositoryImpl(appContext, uri)
     }
 
-    fun downloadArch(force: Boolean = false) {
-        startDownload("Arch Linux ARM", "https://os.archlinuxarm.org/os/ArchLinuxARM-aarch64-latest.tar.gz", force)
-    }
-
-    fun downloadUbuntu(force: Boolean = false) {
-        startDownload("Ubuntu 24.04", "https://cdimage.ubuntu.com/ubuntu-server/noble/daily-live/current/noble-live-server-arm64.iso", force)
+    fun startDownload(distro: com.range.phoneLinuxer.data.model.LinuxDistro, force: Boolean = false) {
+        startDownloadInternal(distro.name, distro.url, force)
+        currentDistro = distro
     }
 
     fun togglePauseResume() {
         if (_isPaused.value) {
             _isPaused.value = false
-            startDownload(currentLabel, currentUrl)
+            currentDistro?.let { startDownload(it) }
         } else {
             _isPaused.value = true
             downloadJob?.cancel()
@@ -144,14 +170,13 @@ class LinuxViewModel(application: Application) : AndroidViewModel(application) {
         stopKeepAliveService()
     }
 
-    private fun startDownload(label: String, url: String, isForced: Boolean = false) {
+    private fun startDownloadInternal(label: String, url: String, isForced: Boolean = false) {
         val repository = repo ?: run {
             _downloadStatus.value = "Error: Select folder first"
             return
         }
 
-        currentUrl = url
-        currentLabel = label
+        currentDistro = _availableDistros.value.find { it.url == url }
 
         startKeepAliveService()
         downloadJob?.cancel()

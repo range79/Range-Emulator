@@ -1,4 +1,4 @@
-package com.range.phoneLinuxer.ui.screen.emulator
+package com.range.phoneLinuxer.ui.screen.addNewEmulator
 
 import android.content.Intent
 import android.net.Uri
@@ -24,7 +24,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.range.phoneLinuxer.data.enums.*
 import com.range.phoneLinuxer.data.model.*
-import com.range.phoneLinuxer.ui.screen.addNewEmulator.*
 import com.range.phoneLinuxer.util.HardwareUtil
 import com.range.phoneLinuxer.viewModel.EmulatorViewModel
 
@@ -41,6 +40,7 @@ fun AddNewEmulatorScreen(
     val deviceMaxRam = remember { HardwareUtil.getTotalRamMB(context) }
     val deviceMaxCores = remember { HardwareUtil.getTotalCores() }
     val hasKvmSupport = remember { HardwareUtil.isKvmSupported() }
+    val isGpuSupported = remember { HardwareUtil.isGpuAccelerationSupported(context) }
     val safeLimit = remember { HardwareUtil.getSafeStorageLimitGB(context) }
     val availableSpace = remember { HardwareUtil.getAvailableInternalStorageGB(context) }
 
@@ -51,6 +51,7 @@ fun AddNewEmulatorScreen(
 
     var diskSizeGb by remember { mutableFloatStateOf(8f) }
     var selectedDiskFormat by remember { mutableStateOf(DiskFormat.QCOW2) }
+    var selectedAioMode by remember { mutableStateOf(DiskAioMode.THREADS) }
     var customDiskPath by remember { mutableStateOf(context.filesDir.absolutePath) }
     val isStorageDangerouslyHigh = diskSizeGb > safeLimit
 
@@ -60,7 +61,7 @@ fun AddNewEmulatorScreen(
 
     var selectedScreenType by remember { mutableStateOf(ScreenType.VNC) }
     var vncPort by remember { mutableStateOf("5900") }
-    var rdpPort by remember { mutableStateOf("3389") }
+    var spicePort by remember { mutableStateOf("5901") }
     var isGpuEnabled by remember { mutableStateOf(true) }
 
     var isEasyInstallEnabled by remember { mutableStateOf(false) }
@@ -90,7 +91,7 @@ fun AddNewEmulatorScreen(
     }
 
     LaunchedEffect(isEasyInstallEnabled) {
-        selectedScreenType = if (isEasyInstallEnabled) ScreenType.RDP else ScreenType.VNC
+        selectedScreenType = if (isEasyInstallEnabled) ScreenType.SPICE else ScreenType.VNC
     }
 
     BackHandler { onBack() }
@@ -117,12 +118,13 @@ fun AddNewEmulatorScreen(
                                     diskImgPath = "$customDiskPath/$vmName.${selectedDiskFormat.name.lowercase()}",
                                     diskFormat = selectedDiskFormat,
                                     diskSizeGB = diskSizeGb.toInt(),
-                                    screenWidth = screenWidth.toIntOrNull() ?: 1280,
-                                    screenHeight = screenHeight.toIntOrNull() ?: 720,
+                                    screenWidth = if (selectedScreenType == ScreenType.SPICE) 0 else (screenWidth.toIntOrNull() ?: 1280),
+                                    screenHeight = if (selectedScreenType == ScreenType.SPICE) 0 else (screenHeight.toIntOrNull() ?: 720),
                                     isGpuEnabled = isGpuEnabled,
                                     screenType = selectedScreenType,
                                     vncPort = vncPort.toIntOrNull() ?: 5900,
-                                    rdpPort = rdpPort.toIntOrNull() ?: 3389,
+                                    spicePort = spicePort.toIntOrNull() ?: 5901,
+                                    diskAioMode = selectedAioMode,
                                     easyInstall = isEasyInstallEnabled,
                                     easyInstallSettings = if (isEasyInstallEnabled) {
                                         EasyInstallSettings(ezUsername, ezPassword, selectedDE)
@@ -179,6 +181,54 @@ fun AddNewEmulatorScreen(
                         color = if (isStorageDangerouslyHigh) Color.Red else MaterialTheme.colorScheme.outline,
                         style = MaterialTheme.typography.labelSmall
                     )
+
+                    Spacer(Modifier.height(16.dp))
+                    Text("Disk Performance (AIO Mode)", style = MaterialTheme.typography.labelMedium)
+                    Text(
+                        "Threads: High compatibility, recommended for older devices.\n" +
+                        "IO_URING: The fastest performance mode (Android 11+).\n" +
+                        "Native: High speed Linux AIO, second choice after io_uring.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(vertical = 4.dp)
+                    )
+                    var aioExpanded by remember { mutableStateOf(false) }
+                    ExposedDropdownMenuBox(
+                        expanded = aioExpanded,
+                        onExpandedChange = { aioExpanded = !aioExpanded }
+                    ) {
+                        OutlinedTextField(
+                            value = selectedAioMode.name,
+                            onValueChange = {},
+                            readOnly = true,
+                            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = aioExpanded) },
+                            modifier = Modifier.menuAnchor(MenuAnchorType.PrimaryNotEditable, true).fillMaxWidth()
+                        )
+                        ExposedDropdownMenu(
+                            expanded = aioExpanded,
+                            onDismissRequest = { aioExpanded = false }
+                        ) {
+                            DiskAioMode.entries.forEach { mode ->
+                                DropdownMenuItem(
+                                    text = {
+                                        Column {
+                                            Text(mode.name, fontWeight = FontWeight.Bold)
+                                            val desc = when(mode) {
+                                                DiskAioMode.THREADS -> "Default compatible mode (Standard for older Android)."
+                                                DiskAioMode.IO_URING -> "Modern high-speed mode (Recommended for Android 12+)."
+                                                DiskAioMode.NATIVE -> "Direct Linux AIO (Use if io_uring fails)."
+                                            }
+                                            Text(desc, style = MaterialTheme.typography.labelSmall)
+                                        }
+                                    },
+                                    onClick = {
+                                        selectedAioMode = mode
+                                        aioExpanded = false
+                                    }
+                                )
+                            }
+                        }
+                    }
                 }
             }
 
@@ -191,12 +241,47 @@ fun AddNewEmulatorScreen(
             selectedIsos.forEach { uri -> ISOListItem(uri = uri, onRemove = { selectedIsos = selectedIsos - uri }) }
 
             SectionHeader("Display & Graphics")
+            if (selectedScreenType == ScreenType.SPICE) {
+                Text(
+                    "English Warning: Manual resolution is disabled for SPICE. System will use optimized dynamic resizing.",
+                    color = MaterialTheme.colorScheme.primary,
+                    style = MaterialTheme.typography.labelSmall,
+                    modifier = Modifier.padding(bottom = 4.dp)
+                )
+            }
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedTextField(value = screenWidth, onValueChange = { screenWidth = it }, label = { Text("Width") }, modifier = Modifier.weight(1f))
-                OutlinedTextField(value = screenHeight, onValueChange = { screenHeight = it }, label = { Text("Height") }, modifier = Modifier.weight(1f))
+                OutlinedTextField(
+                    value = if (selectedScreenType == ScreenType.SPICE) "Auto" else screenWidth,
+                    onValueChange = { screenWidth = it },
+                    label = { Text("Width") },
+                    modifier = Modifier.weight(1f),
+                    enabled = selectedScreenType != ScreenType.SPICE
+                )
+                OutlinedTextField(
+                    value = if (selectedScreenType == ScreenType.SPICE) "Auto" else screenHeight,
+                    onValueChange = { screenHeight = it },
+                    label = { Text("Height") },
+                    modifier = Modifier.weight(1f),
+                    enabled = selectedScreenType != ScreenType.SPICE
+                )
             }
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                Text("Enable GPU Acceleration", modifier = Modifier.weight(1f))
+                Column(modifier = Modifier.weight(1f)) {
+                    Text("Enable GPU Acceleration")
+                    if (!isGpuSupported) {
+                        Text(
+                            "⚠️ Your device might not support Virtio-GPU acceleration. High-performance graphics may not work.",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.error
+                        )
+                    } else {
+                        Text(
+                            "Caution: Virtio-GPU requires host support. Disable if VM fails to start.",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.error.copy(alpha = 0.7f)
+                        )
+                    }
+                }
                 Switch(checked = isGpuEnabled, onCheckedChange = { isGpuEnabled = it })
             }
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {

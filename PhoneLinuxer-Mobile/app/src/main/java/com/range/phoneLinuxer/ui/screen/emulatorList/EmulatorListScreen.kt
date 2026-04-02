@@ -142,7 +142,7 @@ fun VMCard(
 
                 Column(modifier = Modifier.weight(1f)) {
                     Text(vm.vmName, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.ExtraBold)
-                    val port = if (vm.screenType == ScreenType.VNC) vm.vncPort else vm.rdpPort
+                    val port = if (vm.screenType == ScreenType.VNC) vm.vncPort else vm.spicePort
                     Text(
                         "${vm.state.name} • ${vm.screenType.name} : $port",
                         style = MaterialTheme.typography.labelMedium,

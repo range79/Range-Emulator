@@ -11,7 +11,6 @@ class LibLinker(private val context: Context) {
 
     val injectLibDir = File(context.filesDir, "injected_libs")
 
-    // Android-owned libs: Linux versions with same unversioned SONAME must never be injected
     private val systemBlacklistExact = setOf(
         "libEGL.so", "libGLESv1_CM.so", "libGLESv2.so", "libGLESv3.so",
         "libvulkan.so", "libgui.so", "libui.so", "libandroid.so",
@@ -21,23 +20,21 @@ class LibLinker(private val context: Context) {
         "libsqlite3.so"
     )
 
-    // Libs that need a full desktop X11/GL stack — must NOT be in LD_PRELOAD
-    // QEMU will dlopen them at runtime instead; they stay accessible via LD_LIBRARY_PATH
     private val desktopOnlyPrefixes = listOf(
-        "libgst",       // All GStreamer plugins (libgstgl, libgstvideo, etc.)
-        "libGL.so",     // Desktop OpenGL (not GLES)
-        "libGLX",       // GLX (X11 OpenGL)
-        "libGLdispatch",// OpenGL dispatch layer
-        "libX11",       // X11 display system
-        "libxcb",       // XCB (X11 protocol)
-        "libX11-xcb",   // X11/XCB bridge
-        "libxcb-glx",   // GLX-XCB extension
-        "libxcb-dri",   // DRI XCB extensions
-        "libxcb-randr", // RandR XCB extension
-        "libxkb",       // XKB keyboard
-        "libXext",      // X11 extensions
-        "libdrm",       // Direct Rendering Manager
-        "libgbm"        // Generic Buffer Manager
+        "libgst",
+        "libGL.so",
+        "libGLX",
+        "libGLdispatch",
+        "libX11",
+        "libxcb",
+        "libX11-xcb",
+        "libxcb-glx",
+        "libxcb-dri",
+        "libxcb-randr",
+        "libxkb",
+        "libXext",
+        "libdrm",
+        "libgbm"
     )
 
     fun injectAndLink() {
@@ -52,19 +49,16 @@ class LibLinker(private val context: Context) {
                 if (systemBlacklistExact.contains(fileName)) return
                 if (desktopOnlyPrefixes.any { fileName.startsWith(it) }) return
                 
-                // Active dual SONAME patching for libz
                 if (fileName == "libz.so.1" || fileName == "libz.so") {
                     try {
                         val originalBytes = file.readBytes()
                         
-                        // 1. Write the ORIGINAL unpatched bytes to libz.so.1 (SONAME stays libz.so.1)
                         val libz1Dest = File(injectLibDir, "libz.so.1")
                         if (!libz1Dest.exists()) {
                             libz1Dest.writeBytes(originalBytes)
                             libz1Dest.setExecutable(true, false)
                         }
                         
-                        // 2. Clone bytes and patch the clone for libz.so (SONAME becomes libz.so)
                         val patchedBytes = originalBytes.copyOf()
                         val searchBytes = "libz.so.1\u0000".toByteArray()
                         val replaceBytes = "libz.so\u0000\u0000\u0000".toByteArray()
@@ -87,7 +81,7 @@ class LibLinker(private val context: Context) {
                             libzDest.writeBytes(if (patched) patchedBytes else originalBytes)
                             libzDest.setExecutable(true, false)
                         }
-                        return // Fully processed
+                        return
                     } catch (e: Exception) {
                         Timber.tag(TAG).e(e, "Patch error")
                     }
@@ -126,8 +120,6 @@ class LibLinker(private val context: Context) {
             context.filesDir.listFiles()?.filter { it.isFile && (it.name.endsWith(".so") || it.name.contains(".so.")) }
                 ?.forEach { processFile(it) }
 
-            // Remove unversioned symlinks created by EngineExtractor that shadow Android system libs.
-            // e.g. filesDir/libEGL.so → libEGL.so.1 would intercept libgui.so's NEEDED via LD_LIBRARY_PATH.
             systemBlacklistExact.forEach { name ->
                 val f = File(context.filesDir, name)
                 if (f.exists()) { try { f.delete() } catch (_: Exception) {} }

@@ -47,7 +47,6 @@ class PermissionManager(private val context: Context) {
         return powerManager.isIgnoringBatteryOptimizations(context.packageName)
     }
 
-    // Intent Factory
     fun getStoragePermissionIntent(): Intent {
         return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
             Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION).apply {

@@ -8,7 +8,11 @@ import com.range.phoneLinuxer.data.executor.EmulatorExecutor
 import com.range.phoneLinuxer.data.model.VirtualMachineSettings
 import com.range.phoneLinuxer.data.model.buildFullCommand
 import com.range.phoneLinuxer.data.repository.impl.VmSettingsRepositoryImpl
+import android.content.Intent
+import com.range.phoneLinuxer.PhoneLinuxerApp
+import com.range.phoneLinuxer.service.KeepAliveService
 import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import timber.log.Timber
@@ -16,7 +20,7 @@ import timber.log.Timber
 class EmulatorViewModel(application: Application) : AndroidViewModel(application) {
 
     private val repository = VmSettingsRepositoryImpl(application.applicationContext)
-    private val executor = EmulatorExecutor(application)
+    private val executor = (application as PhoneLinuxerApp).executor
 
     private val _vmLogs = MutableStateFlow<Map<String, List<String>>>(emptyMap())
     val vmLogs: StateFlow<Map<String, List<String>>> = _vmLogs.asStateFlow()
@@ -54,10 +58,19 @@ class EmulatorViewModel(application: Application) : AndroidViewModel(application
     fun startVm(settings: VirtualMachineSettings) {
         viewModelScope.launch {
             try {
+                if (settings.isGpuEnabled && !com.range.phoneLinuxer.util.HardwareUtil.isGpuAccelerationSupported(getApplication())) {
+                    _uiEvent.send(UiEvent.Error("Warning: Virtio-GPU is enabled but your device might not support OpenGL ES 3.0+. Emulation might be very slow or fail."))
+                    delay(2000)
+                }
+
+                if (settings.cpuModel == com.range.phoneLinuxer.data.enums.CpuModel.HOST && !com.range.phoneLinuxer.util.HardwareUtil.isKvmSupported()) {
+                    _uiEvent.send(UiEvent.Error("Error: KVM (Host CPU) selected but KVM is not supported or accessible on this device."))
+                    return@launch
+                }
+
                 val correctedPath = settings.diskImgPath?.replace("com.range.PhoneLinuxer", "com.range.phoneLinuxer")
                 var safeSettings = settings.copy(diskImgPath = correctedPath)
 
-                // Prepare ISOs: Copy content URIs to local cache so QEMU can access them as files
                 appendLog(safeSettings.id, "Preparing ISO files (this may take a while)...")
                 val preparedIsos = safeSettings.isoUris.map { uri ->
                     com.range.phoneLinuxer.util.UriHelper.getRealPathFromUri(getApplication(), uri)
@@ -66,11 +79,11 @@ class EmulatorViewModel(application: Application) : AndroidViewModel(application
 
                 val activeVms = vms.value.filter { it.id != safeSettings.id && (it.state == VmState.RUNNING || it.state == VmState.STARTING) }
                 var newVncPort = safeSettings.vncPort
-                var newRdpPort = safeSettings.rdpPort
+                var newSpicePort = safeSettings.spicePort
                 while (activeVms.map { it.vncPort }.contains(newVncPort)) newVncPort++
-                while (activeVms.map { it.rdpPort }.contains(newRdpPort)) newRdpPort++
+                while (activeVms.map { it.spicePort }.contains(newSpicePort)) newSpicePort++
 
-                safeSettings = safeSettings.copy(vncPort = newVncPort, rdpPort = newRdpPort)
+                safeSettings = safeSettings.copy(vncPort = newVncPort, spicePort = newSpicePort)
                 if (safeSettings != settings) repository.saveVm(safeSettings)
 
                 updateVmState(safeSettings.id, VmState.STARTING)
@@ -84,6 +97,8 @@ class EmulatorViewModel(application: Application) : AndroidViewModel(application
                         appendLog(safeSettings.id, logLine)
                     }
                 }
+
+                startKeepAliveService()
 
                 val result = executor.executeCommand(
                     vmId = safeSettings.id,
@@ -101,6 +116,7 @@ class EmulatorViewModel(application: Application) : AndroidViewModel(application
                                 _uiEvent.send(UiEvent.Error("Emulator crashed (Code: $exitCode)"))
                             }
                         }
+                        if (!executor.hasRunningProcesses()) stopKeepAliveService()
                     }
                 }
 
@@ -129,6 +145,7 @@ class EmulatorViewModel(application: Application) : AndroidViewModel(application
                 appendLog(vmId, "--- Terminating VM ---")
                 executor.killProcess(vmId)
                 updateVmState(vmId, VmState.INACTIVE)
+                if (!executor.hasRunningProcesses()) stopKeepAliveService()
             } catch (e: Exception) {
                 _uiEvent.send(UiEvent.Error("Stop error: ${e.message}"))
             }
@@ -173,17 +190,44 @@ class EmulatorViewModel(application: Application) : AndroidViewModel(application
 
     override fun onCleared() {
         super.onCleared()
-        executor.killAll()
+        Timber.i("EmulatorViewModel onCleared: VMs will persist in background.")
+    }
+
+    private fun startKeepAliveService() {
+        val app = getApplication<Application>()
+        val intent = Intent(app.applicationContext, KeepAliveService::class.java).apply {
+            putExtra(KeepAliveService.EXTRA_MODE, KeepAliveService.MODE_VM)
+        }
+        try {
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+                app.startForegroundService(intent)
+            } else {
+                app.startService(intent)
+            }
+        } catch (e: Exception) {
+            Timber.e(e, "Failed to start KeepAliveService")
+        }
+    }
+
+    private fun stopKeepAliveService() {
+        val app = getApplication<Application>()
+        val intent = Intent(app.applicationContext, KeepAliveService::class.java)
+        app.stopService(intent)
     }
 
     private fun appendLog(vmId: String, line: String) {
         _vmLogs.update { currentMap ->
-            val newList = ((currentMap[vmId] ?: emptyList()) + line).takeLast(500)
-            currentMap + (vmId to newList)
+            val history = currentMap[vmId] ?: emptyList()
+            if (history.isNotEmpty() && history.last() == line) {
+                currentMap 
+            } else {
+                val newList = (history + line).takeLast(500)
+                currentMap + (vmId to newList)
+            }
         }
     }
 
-    private fun clearLogs(vmId: String) {
+    fun clearLogs(vmId: String) {
         _vmLogs.update { it + (vmId to emptyList()) }
     }
 

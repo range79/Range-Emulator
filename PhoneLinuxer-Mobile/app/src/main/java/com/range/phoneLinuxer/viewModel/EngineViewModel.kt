@@ -6,7 +6,7 @@ import android.content.Intent
 import android.os.Build
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
-import com.range.phoneLinuxer.data.executor.EmulatorExecutor
+import com.range.phoneLinuxer.PhoneLinuxerApp
 import com.range.phoneLinuxer.data.repository.SettingsRepository
 import com.range.phoneLinuxer.data.repository.impl.SettingsRepositoryImpl
 import com.range.phoneLinuxer.service.KeepAliveService
@@ -19,8 +19,9 @@ import java.io.File
 
 class EngineViewModel(application: Application) : AndroidViewModel(application) {
 
-    private val executor = EmulatorExecutor(application)
-    private val settingsRepository: SettingsRepository = SettingsRepositoryImpl(application.applicationContext)
+    private val executor = (application as PhoneLinuxerApp).executor
+    private val settingsRepository: SettingsRepository =
+        SettingsRepositoryImpl(application.applicationContext)
     private val appSettingsFlow = settingsRepository.settingsFlow
     private val prefs = application.applicationContext.getSharedPreferences("engine_prefs", Context.MODE_PRIVATE)
 
@@ -266,7 +267,9 @@ class EngineViewModel(application: Application) : AndroidViewModel(application) 
 
     private fun startKeepAlive() {
         val app = getApplication<Application>()
-        val intent = Intent(app.applicationContext, KeepAliveService::class.java)
+        val intent = Intent(app.applicationContext, KeepAliveService::class.java).apply {
+            putExtra(KeepAliveService.EXTRA_MODE, KeepAliveService.MODE_DOWNLOAD)
+        }
         try {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) app.startForegroundService(intent)
             else app.startService(intent)

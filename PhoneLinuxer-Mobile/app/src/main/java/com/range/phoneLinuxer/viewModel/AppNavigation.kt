@@ -10,7 +10,7 @@ import androidx.navigation.navArgument
 import com.range.phoneLinuxer.data.repository.SettingsRepository
 import com.range.phoneLinuxer.ui.screen.WelcomeScreen
 import com.range.phoneLinuxer.ui.screen.download.DownloadScreen
-import com.range.phoneLinuxer.ui.screen.emulator.AddNewEmulatorScreen
+import com.range.phoneLinuxer.ui.screen.addNewEmulator.AddNewEmulatorScreen
 import com.range.phoneLinuxer.ui.screen.emulator.VmControlScreen
 import com.range.phoneLinuxer.ui.screen.emulatorList.EditEmulatorScreen
 import com.range.phoneLinuxer.ui.screen.emulatorList.EmulatorListScreen
