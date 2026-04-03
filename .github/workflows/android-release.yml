@@ -2,15 +2,15 @@ name: Android Release
 
 on:
   push:
-    branches: [ "emulator", "main" ]
-    tags: [ "v*" ]
-  pull_request:
-    branches: [ "emulator", "main" ]
+    tags:
+      - 'v*'
   workflow_dispatch:
 
 jobs:
   build:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
     - uses: actions/checkout@v4
       with:
@@ -39,8 +39,12 @@ jobs:
         SIGNING_KEY_PASSWORD: ${{ secrets.SIGNING_KEY_PASSWORD }}
       run: ./gradlew assembleRelease --stacktrace
 
-    - name: Upload APK
-      uses: actions/upload-artifact@v4
+    - name: Create Release and Upload APK
+      uses: softprops/action-gh-release@v2
       with:
-        name: RangeEmulator-Signed
-        path: app/build/outputs/apk/release/app-release.apk
+        files: app/build/outputs/apk/release/app-release.apk
+        name: RangeEmulator ${{ github.ref_name }}
+        tag_name: ${{ github.ref }}
+        body: "Automated Release for RangeEmulator ${{ github.ref_name }}"
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
