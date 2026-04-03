@@ -78,7 +78,7 @@ class EngineViewModel(application: Application) : AndroidViewModel(application) 
         viewModelScope.launch {
             try {
                 _engineDownloadStatus.value = "Fetching OTA specs..."
-                val url = java.net.URL("https://api.github.com/repos/range79x/phone-linuxer-dependencies/releases/latest")
+                val url = java.net.URL("https://api.github.com/repos/range79x/Range-Emulator-Dependencies/releases/latest")
                 val connection = withContext(kotlinx.coroutines.Dispatchers.IO) {
                     url.openConnection() as java.net.HttpURLConnection
                 }
@@ -88,7 +88,7 @@ class EngineViewModel(application: Application) : AndroidViewModel(application) 
                 }
 
                 val tagRegex = """"tag_name"\s*:\s*"([^"]+)"""".toRegex()
-                val urlRegex = """"browser_download_url"\s*:\s*"([^"]+RangeEmulator-Dependencies\.zip)"""".toRegex()
+                val urlRegex = """"browser_download_url"\s*:\s*"([^"]+Range-Emulator-Dependencies\.zip)"""".toRegex()
                 val sizeRegex = """"size"\s*:\s*(\d+)""".toRegex()
 
                 val urlMatch = urlRegex.find(response)
@@ -103,12 +103,12 @@ class EngineViewModel(application: Application) : AndroidViewModel(application) 
                     _engineTargetSizeMB.value = sizeMatch?.groupValues?.get(1)
                         ?.toLongOrNull()?.let { "${it / (1024 * 1024)}" } ?: "107"
                 } else {
-                    _engineTargetUrl.value = "https://github.com/range79x/phone-linuxer-dependencies/releases/download/v1.0.0/RangeEmulator-Dependencies.zip"
+                    _engineTargetUrl.value = "https://github.com/range79x/Range-Emulator-Dependencies/releases/latest/download/Range-Emulator-Dependencies.zip"
                     _engineTargetSizeMB.value = "107"
                 }
                 _engineDownloadStatus.value = "Idle"
             } catch (e: Exception) {
-                _engineTargetUrl.value = "https://github.com/range79x/phone-linuxer-dependencies/releases/download/v1.0.0/RangeEmulator-Dependencies.zip"
+                _engineTargetUrl.value = "https://github.com/range79x/Range-Emulator-Dependencies/releases/latest/download/Range-Emulator-Dependencies.zip"
                 _engineTargetSizeMB.value = "107"
                 _engineDownloadStatus.value = "Idle"
             }
@@ -119,7 +119,7 @@ class EngineViewModel(application: Application) : AndroidViewModel(application) 
         if (!_isEngineDownloaded.value) return
         viewModelScope.launch {
             try {
-                val url = java.net.URL("https://api.github.com/repos/range79x/phone-linuxer-dependencies/releases/latest")
+                val url = java.net.URL("https://api.github.com/repos/range79x/Range-Emulator-Dependencies/releases/latest")
                 val connection = withContext(kotlinx.coroutines.Dispatchers.IO) {
                     (url.openConnection() as java.net.HttpURLConnection).apply {
                         setRequestProperty("Accept", "application/vnd.github.v3+json")
@@ -132,7 +132,7 @@ class EngineViewModel(application: Application) : AndroidViewModel(application) 
                 }
 
                 val tagRegex = """"tag_name"\s*:\s*"([^"]+)"""".toRegex()
-                val urlRegex = """"browser_download_url"\s*:\s*"([^"]+RangeEmulator-Dependencies\.zip)"""".toRegex()
+                val urlRegex = """"browser_download_url"\s*:\s*"([^"]+Range-Emulator-Dependencies\.zip)"""".toRegex()
                 val sizeRegex = """"size"\s*:\s*(\d+)""".toRegex()
 
                 val latestTag = tagRegex.find(response)?.groupValues?.get(1) ?: return@launch

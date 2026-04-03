@@ -1,4 +1,3 @@
-import org.jetbrains.kotlin.config.JvmTarget
 
 plugins {
     alias(libs.plugins.android.application)
@@ -10,6 +9,7 @@ plugins {
 
 android {
     namespace = "com.range.rangeEmulator"
+    testNamespace = "com.range.rangeEmulator.test"
     compileSdk {
         version = release(36)
     }
@@ -30,6 +30,7 @@ android {
     }
     defaultConfig {
         applicationId = "com.range.rangeEmulator"
+        testApplicationId = "com.range.rangeEmulator.test"
         minSdk = 26
         targetSdk = 36
         versionCode = 1
@@ -38,9 +39,19 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
+    signingConfigs {
+        create("release") {
+            storeFile = file("../range_emulator_key.jks")
+            storePassword = System.getenv("SIGNING_STORE_PASSWORD")
+            keyAlias = System.getenv("SIGNING_KEY_ALIAS")
+            keyPassword = System.getenv("SIGNING_KEY_PASSWORD")
+        }
+    }
+
     buildTypes {
         release {
             isMinifyEnabled = false
+            signingConfig = signingConfigs.getByName("release")
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
