@@ -10,9 +10,7 @@ plugins {
 android {
     namespace = "com.range.rangeEmulator"
     testNamespace = "com.range.rangeEmulator.test"
-    compileSdk {
-        version = release(36)
-    }
+    compileSdk = 36
     sourceSets {
         getByName("main") {
 
