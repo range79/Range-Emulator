@@ -25,6 +25,7 @@ import com.range.rangeEmulator.util.PermissionManager
 import com.range.rangeEmulator.viewModel.EmulatorViewModel
 import com.range.rangeEmulator.viewModel.EngineViewModel
 import com.range.rangeEmulator.viewModel.LinuxViewModel
+import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import timber.log.Timber
 
 class MainActivity : ComponentActivity() {
@@ -45,6 +46,7 @@ class MainActivity : ComponentActivity() {
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        installSplashScreen()
         super.onCreate(savedInstanceState)
 
         setupLogging()

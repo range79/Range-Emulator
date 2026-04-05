@@ -42,6 +42,7 @@ data class VirtualMachineSettings(
     val tbSizeMB: Int = 512,
     val isTurboEnabled: Boolean = true,
     val isTitanModeEnabled: Boolean = false,
+    val sshPort: Int = 2222,
     val createdAt: Long = System.currentTimeMillis(),
     val state: VmState = VmState.INACTIVE,
 )
@@ -180,7 +181,7 @@ private fun VirtualMachineSettings.getNetworkArgs(): List<String> {
     when (networkMode) {
         NetworkMode.USER -> {
             args.add("-netdev")
-            args.add("user,id=net0,hostfwd=tcp::2222-:22,dns=8.8.8.8,dns=1.1.1.1")
+            args.add("user,id=net0,hostfwd=tcp::$sshPort-:22,dns=8.8.8.8,dns=1.1.1.1")
             args.add("-device")
             
             val netDevice = if (osType == OsType.WINDOWS) {

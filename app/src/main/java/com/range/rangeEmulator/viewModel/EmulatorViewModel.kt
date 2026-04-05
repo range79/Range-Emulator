@@ -100,18 +100,32 @@ class EmulatorViewModel(application: Application) : AndroidViewModel(application
                 safeSettings = safeSettings.copy(isoUris = preparedIsos)
 
                 val activeVms = vms.value.filter { it.id != safeSettings.id && (it.state == VmState.RUNNING || it.state == VmState.STARTING) }
-                var newVncPort = safeSettings.vncPort
-                var newSpicePort = safeSettings.spicePort
-                while (activeVms.map { it.vncPort }.contains(newVncPort)) newVncPort++
-                while (activeVms.map { it.spicePort }.contains(newSpicePort)) newSpicePort++
+                
+                var vncToTry = safeSettings.vncPort
+                var spiceToTry = safeSettings.spicePort
+                var sshToTry = safeSettings.sshPort
 
-                safeSettings = safeSettings.copy(vncPort = newVncPort, spicePort = newSpicePort)
+                // Avoid ports used by other VMs in repository
+                while (activeVms.any { it.vncPort == vncToTry }) vncToTry++
+                while (activeVms.any { it.spicePort == spiceToTry }) spiceToTry++
+                while (activeVms.any { it.sshPort == sshToTry }) sshToTry++
+
+                // Ensure ports are actually available on the device and unique from each other
+                val finalVnc = com.range.rangeEmulator.util.PortUtil.findAvailablePort(vncToTry)
+                val finalSpice = com.range.rangeEmulator.util.PortUtil.findAvailablePort(maxOf(spiceToTry, finalVnc + 1))
+                val finalSsh = com.range.rangeEmulator.util.PortUtil.findAvailablePort(maxOf(sshToTry, finalSpice + 1))
+
+                safeSettings = safeSettings.copy(vncPort = finalVnc, spicePort = finalSpice, sshPort = finalSsh)
                 if (safeSettings != settings) repository.saveVm(safeSettings)
 
                 updateVmState(safeSettings.id, VmState.STARTING)
                 try { createDisksIfMissing(safeSettings) } catch (e: Exception) { Timber.e(e, "Pre-launch disk check failed") }
 
                 clearLogs(safeSettings.id)
+                appendLog(safeSettings.id, "--- Configuration Initialized ---")
+                appendLog(safeSettings.id, "VNC Port: $finalVnc")
+                appendLog(safeSettings.id, "SPICE Port: $finalSpice")
+                appendLog(safeSettings.id, "SSH HostPort: $finalSsh")
                 appendLog(safeSettings.id, "--- Starting QEMU Engine ---")
 
                 viewModelScope.launch {
