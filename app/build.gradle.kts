@@ -31,8 +31,8 @@ android {
         testApplicationId = "com.range.rangeEmulator.test"
         minSdk = 26
         targetSdk = 36
-        versionCode = 3
-        versionName = "1.2.1"
+        versionCode = 4
+        versionName = "1.2.2"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -74,9 +74,10 @@ android {
 
 dependencies {
     //noinspection UseTomlInstead
+    implementation("io.ktor:ktor-client-core:3.4.2")
     implementation("androidx.compose.material:material-icons-extended")
     implementation("com.google.firebase:firebase-crashlytics-buildtools:3.0.6")
-    implementation("androidx.work:work-runtime-ktx:2.11.1")
+    implementation("androidx.work:work-runtime-ktx:2.11.2")
     implementation(libs.androidx.compose.ui.text)
     implementation(libs.androidx.core.splashscreen)
     // Source: https://mvnrepository.com/artifact/org.slf4j/slf4j-simple
@@ -86,10 +87,10 @@ dependencies {
 // Source: https://mvnrepository.com/artifact/androidx.datastore/datastore-preferences
     implementation("androidx.datastore:datastore-preferences:1.2.1")
     implementation("androidx.documentfile:documentfile:1.1.0")
-    implementation("io.ktor:ktor-client-core:3.4.1")
+
     // build.gradle.kts (dependencies kısmına ekle)
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.10.0")
-    implementation("io.ktor:ktor-client-cio:3.4.1")
+    implementation("io.ktor:ktor-client-cio:3.4.2")
     implementation("io.ktor:ktor-client-logging:3.4.1")
     implementation("com.jakewharton.timber:timber:5.0.1")
     implementation(libs.androidx.core.ktx)
