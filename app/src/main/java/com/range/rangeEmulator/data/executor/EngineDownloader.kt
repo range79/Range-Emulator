@@ -12,6 +12,8 @@ import kotlinx.coroutines.withContext
 import timber.log.Timber
 import java.io.File
 
+class MobileDataRestrictionException : Exception("Mobile data restriction triggered")
+
 class EngineDownloader(private val context: Context) {
 
     suspend fun download(
@@ -50,9 +52,17 @@ class EngineDownloader(private val context: Context) {
                             val code = connection.responseCode
                             if (code == 416) {
                                 isDownloadComplete = true
+                                withContext(Dispatchers.Main) {
+                                    onProgress(currentStartByte, currentStartByte, false, false)
+                                }
                                 return@withContext
                             }
                             if (code != 200 && code != 206) throw Exception("Server error: $code")
+
+                            if (code == 200 && currentStartByte > 0) {
+                                zipFile.delete()
+                                currentStartByte = 0
+                            }
 
                             val contentLength = connection.contentLengthLong
                             if (finalTotalBytes == 0L && contentLength > 0) {
@@ -73,7 +83,7 @@ class EngineDownloader(private val context: Context) {
                                                 break
                                             }
                                             if (!canDownload(allowMobileData)) {
-                                                throw Exception("Mobile data restriction triggered")
+                                                throw MobileDataRestrictionException()
                                             }
                                             output.write(buffer, 0, read)
                                             currentStartByte += read
@@ -97,15 +107,22 @@ class EngineDownloader(private val context: Context) {
                         }
                     }
                 } catch (e: Exception) {
-                    if (e is CancellationException) throw e
-                    e.printStackTrace()
+                    if (e is CancellationException || e is MobileDataRestrictionException) throw e
+                    if (e is java.net.SocketTimeoutException || e is java.io.IOException) {
+                        Timber.w("Download intermittent error: ${e.message}")
+                    } else {
+                        e.printStackTrace()
+                    }
                     retryCount++
                     if (retryCount >= 1000) throw e
                     delay(5000L)
                 }
             }
         } catch (e: Exception) {
-            if (e !is CancellationException) {
+            if (e is CancellationException) throw e
+            if (e is MobileDataRestrictionException) {
+                onProgress(0, 0, false, true)
+            } else {
                 Timber.e(e, "Engine zip download failed")
                 onProgress(0, 0, true, false)
             }

@@ -58,6 +58,12 @@ For the smoothest graphical performance with GPU acceleration enabled:
 Each VM now has its own isolated log file. If something goes wrong, check the **System Logs** in the VM settings to find the exact QEMU output for that specific instance.
 
 ---
+## Technical Overview
+- **Firmware:** Modern UEFI (EDK2) shell.
+- **Accelerated Graphics:** `virtio-gpu-pci` with OpenGL ES 3.0+ support.
+- **Connectivity:** Low-latency **SPICE** protocol (recommended) or VNC.
+- **Architecture:** Optimized for AArch64 (ARM64) host/guest parity.
+
 
 ## Dependencies & Built-in Engine
 

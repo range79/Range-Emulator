@@ -40,30 +40,56 @@ class KeepAliveService : Service() {
         } catch (e: Exception) {
             Timber.e(e, "Failed to acquire locks")
         }
+
+        showDefaultNotification()
+    }
+
+    private fun showDefaultNotification() {
+        val channelId = "KEEP_ALIVE_CHANNEL"
+        val channel = NotificationChannel(
+            channelId, "Process Protection", NotificationManager.IMPORTANCE_LOW
+        )
+        getSystemService(NotificationManager::class.java).createNotificationChannel(channel)
+
+        val notification = NotificationCompat.Builder(this, channelId)
+            .setSmallIcon(android.R.drawable.stat_sys_download)
+            .setContentTitle("Service Active")
+            .setContentText("Keeping emulator components running")
+            .setOngoing(true)
+            .build()
+
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                startForeground(101, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC)
+            } else {
+                startForeground(101, notification)
+            }
+        } catch (e: Exception) {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+                try {
+                    startForeground(101, notification)
+                } catch (e2: Exception) {
+                    Timber.e(e2, "Critical: Failed to start foreground even with fallback")
+                }
+            }
+            Timber.e(e, "Failed to start foreground service in onCreate")
+        }
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         val mode = intent?.getStringExtra(EXTRA_MODE) ?: MODE_DOWNLOAD
         val customText = intent?.getStringExtra(EXTRA_TEXT)
 
-        val channelId = "KEEP_ALIVE_CHANNEL"
-        val channel = NotificationChannel(
-            channelId,
-            "Process Protection",
-            NotificationManager.IMPORTANCE_HIGH
-        )
-        getSystemService(NotificationManager::class.java).createNotificationChannel(channel)
+        val title = if (mode == MODE_VM) "Virtual Machine Running" else "Download Active"
+        val text = customText ?: (if (mode == MODE_VM) "Protecting VM process from background termination" else "Keeping connection alive in background")
+        val icon = if (mode == MODE_VM) android.R.drawable.ic_media_play else android.R.drawable.stat_sys_download
 
         val launchIntent = Intent(this, MainActivity::class.java).apply {
             this.flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
         }
         val pendingIntent = PendingIntent.getActivity(this, 0, launchIntent, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
 
-        val title = if (mode == MODE_VM) "Virtual Machine Running" else "Download Active"
-        val text = customText ?: (if (mode == MODE_VM) "Protecting VM process from background termination" else "Keeping connection alive in background")
-        val icon = if (mode == MODE_VM) android.R.drawable.ic_media_play else android.R.drawable.stat_sys_download
-
-        val notification = NotificationCompat.Builder(this, channelId)
+        val notification = NotificationCompat.Builder(this, "KEEP_ALIVE_CHANNEL")
             .setSmallIcon(icon)
             .setContentTitle(title)
             .setContentText(text)
@@ -79,7 +105,7 @@ class KeepAliveService : Service() {
                 startForeground(101, notification)
             }
         } catch (e: Exception) {
-            Timber.e(e, "Failed to start foreground service")
+            Timber.e(e, "Failed to update foreground notification")
         }
         
         return START_STICKY

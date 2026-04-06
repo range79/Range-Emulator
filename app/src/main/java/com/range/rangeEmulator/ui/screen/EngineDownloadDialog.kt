@@ -34,14 +34,8 @@ fun EngineDownloadDialog(
     if (showMobileWarning) {
         AlertDialog(
             onDismissRequest = { engineVm.dismissMobileDataWarning() },
-            title = {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Default.Warning, contentDescription = null, tint = MaterialTheme.colorScheme.error)
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text("Mobile Data Restricted")
-                }
-            },
-            text = { Text("Downloading QEMU Engine ($targetSizeMB MB) over mobile data is forbidden by your settings. Download anyway?") },
+            title = { Text("Mobile Data Warning") },
+            text = { Text("Mobile data downloads are restricted. Do you want to download this file using your cellular plan anyway?") },
             confirmButton = {
                 Button(onClick = {
                     engineVm.dismissMobileDataWarning()
@@ -55,7 +49,8 @@ fun EngineDownloadDialog(
                 }) { Text("Cancel") }
             }
         )
-    } else if (showConfirmDialog && !isDownloading && !isPaused && progress == 0) {
+    }
+ else if (showConfirmDialog && !isDownloading && !isPaused && progress == 0) {
         AlertDialog(
             onDismissRequest = { showConfirmDialog = false; onDismiss() },
             title = { Text("Download Virtual Engine") },

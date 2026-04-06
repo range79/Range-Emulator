@@ -62,6 +62,7 @@ class EngineViewModel(application: Application) : AndroidViewModel(application) 
     val event = _event.receiveAsFlow()
 
     private var downloadJob: Job? = null
+    private var isExtractionTriggered = false
 
     sealed class EngineEvent {
         object DownloadComplete : EngineEvent()
@@ -174,7 +175,26 @@ class EngineViewModel(application: Application) : AndroidViewModel(application) 
 
     fun downloadEngine(forceMobileData: Boolean = false) {
         if (_isEngineDownloading.value && !_isEnginePaused.value) return
-        startDownload(forceMobileData)
+        
+        val cm = getApplication<Application>().getSystemService(Context.CONNECTIVITY_SERVICE) as android.net.ConnectivityManager
+        val network = cm.activeNetwork
+        val caps = cm.getNetworkCapabilities(network)
+        val isMobile = caps?.hasTransport(android.net.NetworkCapabilities.TRANSPORT_CELLULAR) == true
+        
+        if (isMobile && !forceMobileData) {
+            viewModelScope.launch {
+                val settings = settingsRepository.settingsFlow.first()
+                if (!settings.allowDownloadOnMobileData) {
+                    _showMobileDataWarning.value = true
+                    _isEnginePaused.value = true
+                    return@launch
+                } else {
+                    startDownload(false)
+                }
+            }
+        } else {
+            startDownload(forceMobileData)
+        }
     }
 
     fun togglePauseResume() {
@@ -215,6 +235,7 @@ class EngineViewModel(application: Application) : AndroidViewModel(application) 
             val allowMobile = appSettings.allowDownloadOnMobileData || forceMobileData
 
             _isEngineDownloading.value = true
+            _isEnginePaused.value = false
             _engineDownloadStatus.value = "Downloading QEMU Engine..."
             startKeepAlive()
             val startTime = System.currentTimeMillis()
@@ -224,6 +245,7 @@ class EngineViewModel(application: Application) : AndroidViewModel(application) 
                     _showMobileDataWarning.value = true
                     _isEnginePaused.value = true
                     _isEngineDownloading.value = false
+                    _engineDownloadStatus.value = "Paused: Mobile Data Restricted"
                     stopKeepAlive()
                     return@downloadZip
                 }
@@ -231,6 +253,7 @@ class EngineViewModel(application: Application) : AndroidViewModel(application) 
                 if (isError) {
                     _engineDownloadStatus.value = "Error: Engine Connection Lost"
                     _isEnginePaused.value = true
+                    _isEngineDownloading.value = false
                     stopKeepAlive()
                 } else if (!_isEnginePaused.value) {
                     val progress = if (total > 0) ((downloaded * 100) / total).toInt() else 0
@@ -261,13 +284,15 @@ class EngineViewModel(application: Application) : AndroidViewModel(application) 
                         _engineRemainingTime.value = ""
 
                         viewModelScope.launch {
+                            if (isExtractionTriggered) return@launch
+                            isExtractionTriggered = true
+                            
                             val success = executor.extractZip("engine.zip") { extractProgress ->
                                 _engineDownloadProgress.value = extractProgress
                                 _engineDownloadStatus.value = "Extracting Engine... $extractProgress%"
                             }
                             if (success) {
-                                // Now download tools
-                                val toolsUrl = _toolsTargetUrl.value.ifEmpty { 
+                                val toolsUrl = _toolsTargetUrl.value.ifEmpty {
                                     targetUrl.replace("Range-Emulator-Dependencies.zip", "Range-Emulator-Qemu-Img.zip")
                                 }
                                 _engineDownloadStatus.value = "Downloading QEMU-img Tools..."
@@ -282,8 +307,9 @@ class EngineViewModel(application: Application) : AndroidViewModel(application) 
                                                     _engineDownloadProgress.value = ep
                                                     _engineDownloadStatus.value = "Extracting Tools... $ep%"
                                                 }
-                                                if (toolsSuccess) {
-                                                    _engineDownloadStatus.value = "Download Finished"
+                                                    if (toolsSuccess) {
+                                                        isExtractionTriggered = false
+                                                        _engineDownloadStatus.value = "Download Finished"
                                                     _isEngineDownloaded.value = true
                                                     _isEngineDownloading.value = false
                                                     stopKeepAlive()
