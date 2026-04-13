@@ -26,6 +26,7 @@ import com.range.rangeEmulator.data.enums.*
 import com.range.rangeEmulator.data.model.*
 import com.range.rangeEmulator.util.HardwareUtil
 import com.range.rangeEmulator.viewModel.EmulatorViewModel
+import com.range.rangeEmulator.ui.screen.addNewEmulator.OptimizationType
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -96,8 +97,16 @@ fun AddNewEmulatorScreen(
     var selectedDE by remember { mutableStateOf(DesktopEnvironment.XFCE) }
     var isTitanModeEnabled by remember { mutableStateOf(false) }
     var showTitanWarning by remember { mutableStateOf(false) }
-    var selectedDiskInterface by remember { mutableStateOf(DiskInterface.NVME) }
+    var selectedDiskInterface by remember { mutableStateOf(DiskInterface.VIRTIO) }
     var isTpmEnabled by remember { mutableStateOf(false) }
+
+    var isCacheUnsafe by remember { mutableStateOf(false) }
+    var isMemPreallocEnabled by remember { mutableStateOf(false) }
+    var is4kAlignmentEnabled by remember { mutableStateOf(false) }
+    var isDiscardEnabled by remember { mutableStateOf(true) }
+    var isDetectZeroesEnabled by remember { mutableStateOf(true) }
+    var isGicV3Enabled by remember { mutableStateOf(true) }
+    var isIoThreadEnabled by remember { mutableStateOf(true) }
 
     val isoPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
         uris.forEach { uri -> context.contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION) }
@@ -143,7 +152,14 @@ fun AddNewEmulatorScreen(
             easyInstallSettings = if (isEasyInstallEnabled) {
                 EasyInstallSettings(ezUsername, ezPassword, selectedDE)
             } else null,
-            arch = selectedArch
+            arch = selectedArch,
+            isCacheUnsafe = isCacheUnsafe,
+            isMemPreallocEnabled = isMemPreallocEnabled,
+            is4kAlignmentEnabled = is4kAlignmentEnabled,
+            isDiscardEnabled = isDiscardEnabled,
+            isDetectZeroesEnabled = isDetectZeroesEnabled,
+            isGicV3Enabled = isGicV3Enabled,
+            isIoThreadEnabled = isIoThreadEnabled
         ))
     }
 
@@ -251,20 +267,6 @@ fun AddNewEmulatorScreen(
             )
         }
 
-        if (showTbWarning) {
-            AlertDialog(
-                onDismissRequest = { showTbWarning = false },
-                title = { Text("High TB-Size Warning") },
-                text = { Text("You have selected a very large TCG Cache (${tbSize.toInt()}MB). This exceeds the recommended safe limit (1/3 of RAM) and may cause your device to run out of memory or crash. Are you sure you want to proceed?") },
-                confirmButton = {
-                    TextButton(onClick = { showTbWarning = false; performSave() }) { Text("Proceed Anyway") }
-                },
-                dismissButton = {
-                    TextButton(onClick = { showTbWarning = false }) { Text("Cancel") }
-                }
-            )
-        }
-
         if (showTitanWarning) {
             AlertDialog(
                 onDismissRequest = { showTitanWarning = false },
@@ -279,18 +281,35 @@ fun AddNewEmulatorScreen(
                     Column {
                         Text("Titan Mode enables dangerous performance optimizations:", fontWeight = FontWeight.Bold)
                         Text("• cache=unsafe: Writes are not flushed to disk. A crash WILL result in data corruption.")
-                        Text("• packed=on: Experimental VirtIO optimizations.")
+                        Text("• I/O Thread Polling: Maximum responsive I/O.")
                         Text("\nDo not use this for important data. Only for speed tests and throwaway VMs.")
                     }
                 },
                 confirmButton = {
                     Button(
-                        onClick = { isTitanModeEnabled = true; showTitanWarning = false },
+                        onClick = { 
+                            isTitanModeEnabled = true
+                            showTitanWarning = false 
+                        },
                         colors = ButtonDefaults.buttonColors(containerColor = Color.Red)
                     ) { Text("I Accept the Risk") }
                 },
                 dismissButton = {
                     TextButton(onClick = { showTitanWarning = false }) { Text("Cancel") }
+                }
+            )
+        }
+
+        if (showTbWarning) {
+            AlertDialog(
+                onDismissRequest = { showTbWarning = false },
+                title = { Text("High TB-Size Warning") },
+                text = { Text("You have selected a very large TCG Cache (${tbSize.toInt()}MB). This exceeds the recommended safe limit (1/3 of RAM) and may cause your device to run out of memory or crash. Are you sure you want to proceed?") },
+                confirmButton = {
+                    TextButton(onClick = { showTbWarning = false; performSave() }) { Text("Proceed Anyway") }
+                },
+                dismissButton = {
+                    TextButton(onClick = { showTbWarning = false }) { Text("Cancel") }
                 }
             )
         }
@@ -473,25 +492,36 @@ fun AddNewEmulatorScreen(
             }
             KvmStatusCard(hasKvmSupport)
 
-            OutlinedCard(
-                modifier = Modifier.fillMaxWidth(),
-                colors = CardDefaults.outlinedCardColors(
-                    containerColor = if (isTitanModeEnabled) MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.1f) else MaterialTheme.colorScheme.surface
-                ),
-                border = BorderStroke(if (isTitanModeEnabled) 2.dp else 1.dp, if (isTitanModeEnabled) Color.Red else MaterialTheme.colorScheme.outlineVariant)
-            ) {
-                Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Column(Modifier.weight(1f)) {
-                        Text("TITAN MODE", fontWeight = FontWeight.ExtraBold, color = if (isTitanModeEnabled) Color.Red else MaterialTheme.colorScheme.onSurface)
-                        Text("Extreme performance, high data risk.", style = MaterialTheme.typography.labelSmall)
+            PerformanceTuningCard(
+                isTitanEnabled = isTitanModeEnabled,
+                isCacheUnsafe = isCacheUnsafe,
+                isMemPrealloc = isMemPreallocEnabled,
+                isDiscard = isDiscardEnabled,
+                isDetectZeroes = isDetectZeroesEnabled,
+                isGicV3 = isGicV3Enabled,
+                isIoThread = isIoThreadEnabled,
+                arch = selectedArch,
+                is4kAlignment = is4kAlignmentEnabled,
+                osType = selectedOsType,
+                onTitanToggled = { 
+                    if (it) {
+                        showTitanWarning = true 
+                    } else {
+                        isTitanModeEnabled = false
                     }
-                    Switch(
-                        checked = isTitanModeEnabled,
-                        onCheckedChange = { if (it) showTitanWarning = true else isTitanModeEnabled = false },
-                        colors = SwitchDefaults.colors(checkedThumbColor = Color.Red, checkedTrackColor = Color.Red.copy(alpha = 0.5f))
-                    )
+                },
+                onGranularChange = { type, value ->
+                    when (type) {
+                        OptimizationType.CACHE_UNSAFE -> isCacheUnsafe = value
+                        OptimizationType.MEM_PREALLOC -> isMemPreallocEnabled = value
+                        OptimizationType.DISCARD -> isDiscardEnabled = value
+                        OptimizationType.IOTHREAD -> isIoThreadEnabled = value
+                        OptimizationType.GIC_V3 -> isGicV3Enabled = value
+                        OptimizationType.DETECT_ZEROES -> isDetectZeroesEnabled = value
+                        OptimizationType.ALIGN_4K -> is4kAlignmentEnabled = value
+                    }
                 }
-            }
+            )
             
             SettingSlider(
                 title = "RAM: ${ramAmount.toInt()} / $deviceMaxRam MB", 

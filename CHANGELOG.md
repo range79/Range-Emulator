@@ -1,0 +1,6 @@
+- Enforced Modern Virtio 1.0 and disabled `pauth` to fix Windows ARM64 boot crashes.
+- Re-scaled CPU performance metrics (MAX at 60%) with standardized Titan Mode labels.
+- Implemented automatic 4K alignment bypass for Windows boot stability.
+- Restricted MAX CPU model to AArch64 architecture selection.
+- Restored `usb-tablet` mouse synchronization for SPICE clients.
+- Fixed performance mode selection toggle regression.

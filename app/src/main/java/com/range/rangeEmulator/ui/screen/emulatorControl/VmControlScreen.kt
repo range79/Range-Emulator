@@ -85,9 +85,9 @@ fun VmControlScreen(
     val protocolName = if (isSpice) "SPICE" else "VNC"
 
     val portValue = if (isSpice) {
-        currentVm?.spicePort.toString()
+        currentVm!!.spicePort.toString()
     } else {
-        currentVm?.vncPort.toString()
+        currentVm!!.vncPort.toString()
     }
 
     Scaffold(
@@ -106,7 +106,7 @@ fun VmControlScreen(
         var isIgnoringBatteryOptimizations by remember { 
             mutableStateOf(powerManager.isIgnoringBatteryOptimizations(context.packageName)) 
         }
-        val isTurboModeEnabled = currentVm?.isTurboEnabled ?: true
+        val isTitanModeEnabled = currentVm!!.isTitanModeEnabled
         var isMonitoringEnabled by remember { mutableStateOf(false) }
         var cpuUsage by remember { mutableIntStateOf(0) }
         var ramUsage by remember { mutableStateOf(0L to 1L) }
@@ -147,13 +147,7 @@ fun VmControlScreen(
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             PerformanceDashboardCard(
-                isTurboEnabled = isTurboModeEnabled,
-                onToggleTurbo = { enabled ->
-                    viewModel.updateTurboMode(vmId, enabled)
-                    if (currentVm?.state == VmState.RUNNING) {
-                        Toast.makeText(context, "Extreme Performance updated! Restart the VM to apply full power.", Toast.LENGTH_LONG).show()
-                    }
-                },
+                isTitanEnabled = isTitanModeEnabled,
                 isIgnoringBattery = isIgnoringBatteryOptimizations,
                 isMonitoring = isMonitoringEnabled,
                 cpuUsage = cpuUsage,
@@ -174,7 +168,7 @@ fun VmControlScreen(
             Surface(
                 modifier = Modifier.size(100.dp),
                 shape = CircleShape,
-                color = if (currentVm?.state == VmState.RUNNING) Color(0xFF4CAF50) else Color.Gray,
+                color = if (currentVm.state == VmState.RUNNING) Color(0xFF4CAF50) else Color.Gray,
                 shadowElevation = 6.dp
             ) {
                 Box(contentAlignment = Alignment.Center) {
@@ -188,22 +182,30 @@ fun VmControlScreen(
             }
 
             Text(
-                text = currentVm?.vmName ?: "Unknown Machine",
+                text = currentVm.vmName,
                 style = MaterialTheme.typography.headlineMedium,
                 fontWeight = FontWeight.ExtraBold,
                 modifier = Modifier.padding(top = 16.dp)
             )
 
             Text(
-                text = "Status: ${currentVm?.state?.name ?: "Unknown"}",
+                text = "Status: ${currentVm.state.name}",
                 style = MaterialTheme.typography.bodyMedium,
-                color = if (currentVm?.state == VmState.RUNNING) Color(0xFF4CAF50) else MaterialTheme.colorScheme.secondary,
+                color = if (currentVm.state == VmState.RUNNING) Color(0xFF4CAF50) else MaterialTheme.colorScheme.secondary,
                 fontWeight = FontWeight.Bold
             )
 
             Spacer(modifier = Modifier.height(16.dp))
 
             currentVm?.let { vm ->
+                if (isSpice) {
+                    Text(
+                        "Note: Manual resolution is disabled for SPICE. System will use optimized dynamic resizing.",
+                        color = MaterialTheme.colorScheme.primary,
+                        style = MaterialTheme.typography.labelSmall,
+                        modifier = Modifier.padding(bottom = 8.dp)
+                    )
+                }
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -212,7 +214,7 @@ fun VmControlScreen(
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    val archLabel = vm.cpuModel.getArch().uppercase()
+                    val archLabel = vm.arch.toQemuArch().uppercase()
                     CompactInfoChip(
                         icon = if (archLabel == "X86_64") Icons.Default.Computer else Icons.Default.PhoneAndroid,
                         label = archLabel,
@@ -285,7 +287,7 @@ fun VmControlScreen(
 
                     ControlInfoRow(
                         label = "Protocol",
-                        value = if (isSpice) "SPICE (Simple Protocol for IDM)" else "VNC (RFB Protocol)"
+                        value = if (isSpice) "SPICE" else "VNC"
                     )
                 }
             }

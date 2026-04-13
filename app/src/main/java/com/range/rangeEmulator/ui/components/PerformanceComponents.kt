@@ -25,8 +25,7 @@ import java.io.File
 
 @Composable
 fun PerformanceDashboardCard(
-    isTurboEnabled: Boolean,
-    onToggleTurbo: (Boolean) -> Unit,
+    isTitanEnabled: Boolean,
     isIgnoringBattery: Boolean,
     isMonitoring: Boolean,
     cpuUsage: Int,
@@ -75,25 +74,28 @@ fun PerformanceDashboardCard(
                         )
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
-                            modifier = if (isTurboEnabled) Modifier.clickable {
-                                android.widget.Toast.makeText(context, "Device may heat up during extreme performance mode.", android.widget.Toast.LENGTH_SHORT).show()
+                            modifier = if (isTitanEnabled) Modifier.clickable {
+                                android.widget.Toast.makeText(context, "Titan Mode: Extreme performance may cause device heating and data risks.", android.widget.Toast.LENGTH_SHORT).show()
                             } else Modifier
                         ) {
                             Box(
                                 modifier = Modifier
                                     .size(6.dp)
-                                    .background(if (isTurboEnabled) Color(0xFFFFC107) else Color(0xFF4CAF50), CircleShape)
+                                    .background(
+                                        if (isTitanEnabled) Color.Red else Color(0xFF4CAF50), 
+                                        CircleShape
+                                    )
                             )
                             Spacer(Modifier.width(6.dp))
                             Text(
-                                if (isTurboEnabled) "Extreme Optimization ON" else "Balanced Optimization", 
+                                text = if (isTitanEnabled) "Titan: Extreme Power" else "Balanced Power", 
                                 style = MaterialTheme.typography.labelSmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
-                            if (isTurboEnabled) {
+                            if (isTitanEnabled) {
                                 Spacer(Modifier.width(4.dp))
                                 Icon(
-                                    imageVector = Icons.Default.PriorityHigh,
+                                    imageVector = Icons.Default.Whatshot,
                                     contentDescription = null,
                                     tint = Color.Red,
                                     modifier = Modifier.size(14.dp)
@@ -111,15 +113,6 @@ fun PerformanceDashboardCard(
                         Spacer(Modifier.width(4.dp))
                         Text(if (isMonitoring) "Hide" else "Monitor", fontSize = 12.sp)
                     }
-
-                    Switch(
-                        checked = isTurboEnabled,
-                        onCheckedChange = onToggleTurbo,
-                        modifier = Modifier.scale(0.8f),
-                        thumbContent = {
-                            if (isTurboEnabled) Icon(Icons.Default.Bolt, null, Modifier.size(14.dp))
-                        }
-                    )
                 }
 
                 if (isMonitoring) {

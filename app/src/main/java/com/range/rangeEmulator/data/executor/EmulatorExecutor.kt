@@ -26,6 +26,7 @@ class EmulatorExecutor(private val context: Context) {
     private var wakeLock: PowerManager.WakeLock? = null
 
     private val swtpmProcesses = ConcurrentHashMap<String, Process>()
+    private val cleanupLock = Any()
     private val libLinker = LibLinker(context)
     val downloader = EngineDownloader(context)
     val extractor = EngineExtractor(context)
@@ -103,13 +104,17 @@ class EmulatorExecutor(private val context: Context) {
     suspend fun executeCommand(
         vmId: String,
         fullCommand: List<String>,
-        isTurboEnabled: Boolean = false,
         isTpmEnabled: Boolean = false,
         tpmSockPath: String? = null,
         arch: Architecture = Architecture.AARCH64,
         onExit: ((Int) -> Unit)? = null
     ): Result<Long> = withContext(Dispatchers.IO) {
-        if (isAlive(vmId)) return@withContext Result.failure(Exception("Already running"))
+        // Force kill any existing process for this VM to ensure a clean start
+        if (isAlive(vmId)) {
+            Timber.tag(TAG).w("VM $vmId is already running/stale. Force killing before restart...")
+            killProcess(vmId)
+            delay(500) // Small delay to let the OS clean up
+        }
 
         try {
             libLinker.injectAndLink()
@@ -134,6 +139,8 @@ class EmulatorExecutor(private val context: Context) {
             val qemuArch = arch.toQemuArch()
             val archBinaryName = "libqemu_system_$qemuArch.so"
             
+            Timber.tag(TAG).i("Target Architecture: ${arch.name} ($qemuArch)")
+
             val qemuInFilesDir = File(context.filesDir, archBinaryName)
             val qemuInNativeDir = File(context.applicationInfo.nativeLibraryDir, archBinaryName)
             val fallbackFilesDir = File(context.filesDir, "libqemu_system.so")
@@ -148,6 +155,8 @@ class EmulatorExecutor(private val context: Context) {
             }
             qemuBinary.setExecutable(true, false)
 
+            Timber.tag(TAG).i("Engine path: ${qemuBinary.absolutePath}")
+
             val biosDir = File(context.filesDir, "pc-bios")
             val patchedCommand = mutableListOf<String>().apply {
                 val linker = if (System.getProperty("os.arch")?.contains("64") == true) "/system/bin/linker64" else "/system/bin/linker"
@@ -157,6 +166,8 @@ class EmulatorExecutor(private val context: Context) {
                 add("-L")
                 add(biosDir.absolutePath)
             }
+
+            Timber.tag(TAG).i("FULL COMMAND: ${patchedCommand.joinToString(" ")}")
 
             val pb = ProcessBuilder(patchedCommand)
             val env = pb.environment()
@@ -178,9 +189,8 @@ class EmulatorExecutor(private val context: Context) {
             runningProcesses[vmId] = process
             logJobs[vmId] = launchLogReader(vmId, process.inputStream)
 
-            if (isTurboEnabled) {
-                launchPerformanceBooster(vmId, process)
-            }
+            // Performance Booster is now standard for all modes
+            launchPerformanceBooster(vmId, process)
 
             if (wakeLock == null) {
                 wakeLock = powerManager.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "RangeEmulator:VM_RUNNING").apply {
@@ -195,6 +205,16 @@ class EmulatorExecutor(private val context: Context) {
                         onExit(exitCode)
                     } catch (e: Exception) {
                         onExit(-1)
+                    } finally {
+                        cleanup(vmId)
+                    }
+                }
+            } else {
+                executorScope.launch {
+                    try {
+                        process.waitFor()
+                    } finally {
+                        cleanup(vmId)
                     }
                 }
             }
@@ -271,6 +291,8 @@ class EmulatorExecutor(private val context: Context) {
                         withContext(Dispatchers.IO) { reader.readLine() }
                     } catch (e: java.io.IOException) {
                         null
+                    } catch (e: Exception) {
+                        null
                     } ?: break
                     
                     flow.emit(line)
@@ -305,10 +327,22 @@ class EmulatorExecutor(private val context: Context) {
     fun killAll() = runningProcesses.keys.forEach { killProcess(it) }
 
     fun isAlive(vmId: String): Boolean {
-        val process = runningProcesses[vmId] ?: return false
-        return try { process.exitValue(); false }
-        catch (e: IllegalThreadStateException) { true }
-        catch (t: Throwable) { false }
+        val qemuProcess = runningProcesses[vmId]
+        val swtpmProcess = swtpmProcesses[vmId]
+        
+        val qemuAlive = qemuProcess != null && try { processAlive(qemuProcess) } catch (e: Exception) { false }
+        val swtpmAlive = swtpmProcess != null && try { processAlive(swtpmProcess) } catch (e: Exception) { false }
+        
+        return qemuAlive || swtpmAlive
+    }
+
+    private fun processAlive(process: Process): Boolean {
+        return try {
+            process.exitValue()
+            false
+        } catch (e: IllegalThreadStateException) {
+            true
+        }
     }
 
     fun hasRunningProcesses(): Boolean = runningProcesses.isNotEmpty()
@@ -355,13 +389,23 @@ class EmulatorExecutor(private val context: Context) {
             swtpmProcesses[vmId] = process
             
             executorScope.launch {
-                process.inputStream.bufferedReader().use { reader ->
-                    reader.forEachLine { line ->
-                        Timber.tag("SWTPM_$vmId").d(line)
+                try {
+                    process.inputStream.bufferedReader().use { reader ->
+                        reader.forEachLine { line ->
+                            Timber.tag("SWTPM_$vmId").d(line)
+                        }
                     }
+                } catch (e: Exception) {
+                    if (e !is java.io.IOException && e !is java.util.concurrent.CancellationException) {
+                        Timber.tag("SWTPM_$vmId").e(e, "Log reader failed")
+                    }
+                } finally {
+                    try {
+                        val exitCode = process.waitFor()
+                        Timber.tag("SWTPM_$vmId").i("Process exited with code: $exitCode")
+                    } catch (_: Exception) {}
+                    cleanup(vmId)
                 }
-                val exitCode = process.waitFor()
-                Timber.tag("SWTPM_$vmId").e("Process exited with code: $exitCode")
             }
             Timber.tag(TAG).d("Started swtpm for $vmId at $sockPath")
         } catch (e: Exception) {
@@ -369,7 +413,9 @@ class EmulatorExecutor(private val context: Context) {
         }
     }
 
-    private fun cleanup(vmId: String) {
+    private fun cleanup(vmId: String) = synchronized(cleanupLock) {
+        val hadProcess = runningProcesses.containsKey(vmId) || swtpmProcesses.containsKey(vmId)
+        
         runningProcesses.remove(vmId)
         logJobs.remove(vmId)
         
@@ -380,7 +426,9 @@ class EmulatorExecutor(private val context: Context) {
         
         if (runningProcesses.isEmpty()) {
             wakeLock?.let {
-                if (it.isHeld) it.release()
+                try {
+                    if (it.isHeld) it.release()
+                } catch (_: Throwable) {}
                 wakeLock = null
             }
         }
