@@ -229,7 +229,7 @@ fun VMCard(
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                     Spacer(Modifier.height(4.dp))
-                    val archLabel = vm.cpuModel.getArch().uppercase()
+                    val archLabel = vm.arch.toQemuArch().uppercase()
                     Surface(
                         color = if (archLabel == "X86_64") MaterialTheme.colorScheme.tertiaryContainer else MaterialTheme.colorScheme.secondaryContainer,
                         shape = RoundedCornerShape(4.dp)

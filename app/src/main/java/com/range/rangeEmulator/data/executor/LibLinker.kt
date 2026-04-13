@@ -21,7 +21,6 @@ class LibLinker(private val context: Context) {
     )
 
     private val desktopOnlyPrefixes = listOf(
-        "libgst",
         "libGL.so",
         "libGLX",
         "libGLdispatch",
@@ -140,6 +139,8 @@ class LibLinker(private val context: Context) {
     private fun createSymlink(target: File, linkName: String) {
         val linkFile = File(injectLibDir, linkName)
         try {
+            if (linkFile.exists()) linkFile.delete()
+            
             if (linkName.startsWith("libz.so")) {
                 if (target.absolutePath.startsWith(context.filesDir.absolutePath)) {
                     target.copyTo(linkFile, overwrite = true)
@@ -147,9 +148,16 @@ class LibLinker(private val context: Context) {
                     return
                 }
             }
-            Os.symlink(target.absolutePath, linkFile.absolutePath)
+            
+            try {
+                Os.symlink(target.absolutePath, linkFile.absolutePath)
+            } catch (e: Exception) {
+                target.copyTo(linkFile, overwrite = true)
+                linkFile.setReadable(true, false)
+                linkFile.setExecutable(true, false)
+            }
         } catch (e: Exception) {
-            Timber.tag(TAG).v("Link fail: $linkName")
+            Timber.tag(TAG).e("Link fail: $linkName -> ${e.message}")
         }
     }
 

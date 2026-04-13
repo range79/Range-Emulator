@@ -7,7 +7,10 @@ import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -16,29 +19,12 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Album
-import androidx.compose.material.icons.filled.Android
-import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.MoreHoriz
-import androidx.compose.material.icons.filled.Terminal
-import androidx.compose.material.icons.filled.Window
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.DropdownMenuItem
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.ExposedDropdownMenuBox
-import androidx.compose.material3.ExposedDropdownMenuDefaults
-import androidx.compose.material3.HorizontalDivider
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.MenuAnchorType
-import androidx.compose.material3.OutlinedCard
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Slider
-import androidx.compose.material3.Text
+import androidx.compose.material.icons.filled.*
+import androidx.compose.material.icons.automirrored.filled.*
+import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -47,13 +33,16 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.range.rangeEmulator.data.enums.Architecture
 import com.range.rangeEmulator.data.enums.CpuModel
 import com.range.rangeEmulator.data.enums.OsType
+import com.range.rangeEmulator.util.HardwareUtil
 
 @Composable
 fun SectionHeader(title: String) {
@@ -101,36 +90,31 @@ fun SettingSlider(
 
 fun getCpuDescription(model: CpuModel): String = when (model) {
     CpuModel.HOST ->
-        "KVM Passthrough: Native hardware access. | Performance: 95-99% (Native Speed)"
-
-    CpuModel.CORTEX_A76 ->
-        "Modern ARM64: Optimized for 64-bit distros. | Performance: ~45-55%"
-
-    CpuModel.CORTEX_A72 ->
-        "Standard ARM64: High stability, broad support. | Performance: ~35-40% (Stable Execution)"
-
-    CpuModel.CORTEX_A53 ->
-        "Power Efficient: Low thermal profile. | Performance: ~25-30% (Best for Background)"
+        "Native Hardware Access: Direct silicon speed. | Performance: Up to 100% (KVM)"
 
     CpuModel.MAX ->
-        "Full Feature Emulation: Software-based features. | Performance: ~15-20% (Heavy Load)"
+        "Peak Software Speed: Fastest non-KVM mode. | Performance: Up to ~60% with Titan Mode"
 
-    CpuModel.QEMU64 ->
-        "Binary Translation (x86_64): Cross-arch overhead. | Performance: ~5-10% (Usable for CLI)"
+    CpuModel.CORTEX_A76 ->
+        "Modern ARM64: Optimized for AArch64 distros. | Performance: Up to ~40% with Titan Mode"
 
-    CpuModel.HASWELL ->
-        "Complex x86_64: AVX2 translation stress. | Performance: ~2-5% (High Heat)"
+    CpuModel.CORTEX_A72 ->
+        "Standard ARM64: Balanced stability and speed. | Performance: Up to ~30% with Titan Mode"
+
+    CpuModel.CORTEX_A53 ->
+        "Ultra Efficient: Lowest overhead, very slow. | Performance: Up to ~15% with Titan Mode"
 
     CpuModel.NEOVERSE_N1 ->
-        "Cloud-Class ARM: Multi-threaded workloads. | Performance: ~40-45% (High Throughput)"
+        "Cloud-Class ARM: Optimized for server loads. | Performance: Up to ~45% with Titan Mode"
 
-    else -> "Generic Model: Standard software emulation. | Performance: ~20-25% (Basic Use)"
+    else -> "Generic Model: Standard software emulation. | Performance: ~20-25% with Titan Mode"
 }
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun CpuModelDropdown(
     selectedModel: CpuModel,
     hasKvm: Boolean,
+    arch: Architecture = Architecture.AARCH64,
     onModelSelected: (CpuModel) -> Unit
 ) {
     val context = LocalContext.current
@@ -157,7 +141,7 @@ fun CpuModelDropdown(
             expanded = expanded,
             onDismissRequest = { expanded = false }
         ) {
-            CpuModel.entries.forEach { model ->
+            CpuModel.entries.filter { it.isUniversal() || it.getArch() == arch.toQemuArch() }.forEach { model ->
                 val isUnsupported = model.requiresKvm() && !hasKvm
 
                 DropdownMenuItem(
@@ -191,21 +175,116 @@ fun CpuModelDropdown(
 }
 
 @Composable
-fun OsSelector(
+fun SystemConfigPanel(
     selectedOs: OsType,
-    onOsSelected: (OsType) -> Unit
+    selectedArch: Architecture,
+    selectedCpu: CpuModel,
+    isTpmEnabled: Boolean,
+    hasKvm: Boolean,
+    onOsSelected: (OsType) -> Unit,
+    onArchSelected: (Architecture) -> Unit,
+    onCpuSelected: (CpuModel) -> Unit,
+    onTpmSelected: (Boolean) -> Unit
 ) {
-    Row(
+    OutlinedCard(
         modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(8.dp)
+        shape = RoundedCornerShape(24.dp),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+        colors = CardDefaults.outlinedCardColors(containerColor = MaterialTheme.colorScheme.surface)
     ) {
-        OsType.entries.forEach { os ->
-            OsCard(
-                os = os,
-                isSelected = selectedOs == os,
-                onClick = { onOsSelected(os) },
-                modifier = Modifier.weight(1f)
-            )
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(20.dp)
+        ) {
+            Text("System Configuration", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.ExtraBold)
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                OsType.entries.forEach { os ->
+                    OsCard(
+                        os = os,
+                        isSelected = selectedOs == os,
+                        onClick = { onOsSelected(os) },
+                        modifier = Modifier.weight(1f)
+                    )
+                }
+            }
+
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("Target Architecture", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f))
+                        .padding(4.dp),
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    Architecture.entries.forEach { arch ->
+                        val isSelected = selectedArch == arch
+                        Surface(
+                            onClick = { onArchSelected(arch) },
+                            modifier = Modifier.weight(1f),
+                            shape = RoundedCornerShape(8.dp),
+                            color = if (isSelected) MaterialTheme.colorScheme.primary else Color.Transparent,
+                            contentColor = if (isSelected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .padding(vertical = 10.dp)
+                                    .fillMaxWidth(),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Icon(
+                                        if (arch == Architecture.AARCH64) Icons.Default.Memory else Icons.Default.Computer,
+                                        null,
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                    Spacer(Modifier.width(8.dp))
+                                    Text(
+                                        arch.toString().substringBefore(" ("),
+                                        style = MaterialTheme.typography.labelLarge,
+                                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("Processor Model", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
+                CpuModelDropdown(
+                    selectedModel = selectedCpu,
+                    hasKvm = hasKvm,
+                    arch = selectedArch,
+                    onModelSelected = onCpuSelected
+                )
+            }
+
+            Surface(
+                modifier = Modifier.fillMaxWidth(),
+                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.2f),
+                shape = RoundedCornerShape(12.dp)
+            ) {
+                Row(
+                    modifier = Modifier.padding(12.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(Modifier.weight(1f)) {
+                        Text("TPM 2.0 Security", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold)
+                        Text("Required for Windows 11 features.", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                    Switch(
+                        checked = isTpmEnabled,
+                        onCheckedChange = onTpmSelected
+                    )
+                }
+            }
         }
     }
 }
@@ -278,6 +357,167 @@ private fun OsCard(
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+fun PerformanceTuningCard(
+    isTitanEnabled: Boolean,
+    isCacheUnsafe: Boolean,
+    isMemPrealloc: Boolean,
+    isDiscard: Boolean,
+    isDetectZeroes: Boolean,
+    isGicV3: Boolean,
+    isIoThread: Boolean,
+    arch: Architecture,
+    is4kAlignment: Boolean,
+    onTitanToggled: (Boolean) -> Unit,
+    onGranularChange: (OptimizationType, Boolean) -> Unit,
+    osType: OsType = OsType.LINUX
+) {
+    OutlinedCard(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(28.dp),
+        border = BorderStroke(1.5.dp, MaterialTheme.colorScheme.outlineVariant)
+    ) {
+        Column(modifier = Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+            Text("Power & Performance", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Black)
+
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                ModeSelectionItem(
+                    title = "Balanced",
+                    subtitle = "Stable (100% CPU)",
+                    icon = Icons.Default.Shield,
+                    checked = !isTitanEnabled,
+                    onCheckedChange = { if (it) onTitanToggled(false) },
+                    activeColor = Color(0xFF4CAF50),
+                    modifier = Modifier.weight(1f)
+                )
+                ModeSelectionItem(
+                    title = "Titan",
+                    subtitle = "Up to 300% CPU Speed",
+                    icon = Icons.Default.FlashOn,
+                    checked = isTitanEnabled,
+                    onCheckedChange = onTitanToggled,
+                    activeColor = Color.Red,
+                    modifier = Modifier.weight(1f)
+                )
+            }
+
+            HorizontalDivider(thickness = 0.5.dp, color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+
+            var showAdvanced by remember { mutableStateOf(false) }
+            TextButton(
+                onClick = { showAdvanced = !showAdvanced },
+                modifier = Modifier.align(Alignment.CenterHorizontally)
+            ) {
+                Text(if (showAdvanced) "Hide Advanced Controls" else "Show Advanced Controls", style = MaterialTheme.typography.labelSmall)
+                Icon(if (showAdvanced) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown, null, Modifier.size(16.dp))
+            }
+
+            if (showAdvanced) {
+                FlowRow(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                    maxItemsInEachRow = 2
+                ) {
+                    val titanLocked = isTitanEnabled
+
+                    OptimizationToggle(
+                        label = "Cache Unsafe",
+                        description = "+150% CPU Boost",
+                        checked = titanLocked || isCacheUnsafe,
+                        onCheckedChange = { onGranularChange(OptimizationType.CACHE_UNSAFE, it) },
+                        enabled = !titanLocked,
+                        modifier = Modifier.weight(1f)
+                    )
+                    OptimizationToggle(
+                        label = "Mem Prealloc",
+                        description = "+50% Stability",
+                        checked = titanLocked || isMemPrealloc,
+                        onCheckedChange = { onGranularChange(OptimizationType.MEM_PREALLOC, it) },
+                        enabled = !titanLocked,
+                        modifier = Modifier.weight(1f)
+                    )
+                    OptimizationToggle(
+                        label = "Discard/TRIM",
+                        description = "Standard",
+                        checked = true,
+                        onCheckedChange = { },
+                        enabled = false,
+                        modifier = Modifier.weight(1f)
+                    )
+                    OptimizationToggle(
+                        label = "IOThread",
+                        description = "Standard",
+                        checked = true,
+                        onCheckedChange = { },
+                        enabled = false,
+                        modifier = Modifier.weight(1f)
+                    )
+                    if (arch == Architecture.AARCH64) {
+                        OptimizationToggle(
+                            label = "GIC v3",
+                            description = "+30% IO Speed",
+                            checked = titanLocked || isGicV3,
+                            onCheckedChange = { onGranularChange(OptimizationType.GIC_V3, it) },
+                            enabled = !titanLocked,
+                            modifier = Modifier.weight(1f)
+                        )
+                    }
+
+                    val isWindowsTitan = osType == OsType.WINDOWS && titanLocked
+                    OptimizationToggle(
+                        label = "4K Alignment",
+                        description = if (isWindowsTitan) "Disabled (Stability)" else "Turbo IO",
+                        checked = if (isWindowsTitan) false else (titanLocked || is4kAlignment),
+                        onCheckedChange = { onGranularChange(OptimizationType.ALIGN_4K, it) },
+                        enabled = !isWindowsTitan, // Fixed: Only disabled in Titan Mode for Windows
+                        modifier = Modifier.weight(1f)
+                    )
+                }
+            }
+        }
+    }
+}
+
+enum class OptimizationType { CACHE_UNSAFE, MEM_PREALLOC, DISCARD, IOTHREAD, GIC_V3, DETECT_ZEROES, ALIGN_4K }
+
+@Composable
+private fun ModeSelectionItem(
+    title: String,
+    subtitle: String,
+    icon: ImageVector,
+    checked: Boolean,
+    onCheckedChange: (Boolean) -> Unit,
+    activeColor: Color,
+    modifier: Modifier = Modifier
+) {
+    Surface(
+        onClick = { onCheckedChange(!checked) },
+        shape = RoundedCornerShape(20.dp),
+        color = if (checked) activeColor.copy(alpha = 0.15f) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f),
+        border = BorderStroke(1.5.dp, if (checked) activeColor else Color.Transparent),
+        modifier = modifier.height(80.dp)
+    ) {
+        Row(
+            modifier = Modifier.padding(12.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Box(
+                modifier = Modifier.size(40.dp).background(if (checked) activeColor else MaterialTheme.colorScheme.surface, CircleShape),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(icon, null, tint = if (checked) Color.White else MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(24.dp))
+            }
+            Spacer(Modifier.width(12.dp))
+            Column {
+                Text(title, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodyLarge, color = if (checked) activeColor else MaterialTheme.colorScheme.onSurface)
+                Text(subtitle, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }
+    }
+}
+
 @Composable
 fun ISOListItem(
     uri: Uri,
@@ -318,6 +558,41 @@ fun ISOListItem(
                 contentDescription = "Remove ISO",
                 tint = MaterialTheme.colorScheme.error,
                 modifier = Modifier.size(20.dp)
+            )
+        }
+    }
+}
+
+@Composable
+private fun OptimizationToggle(
+    label: String,
+    description: String,
+    checked: Boolean,
+    onCheckedChange: (Boolean) -> Unit,
+    enabled: Boolean,
+    modifier: Modifier = Modifier
+) {
+    Surface(
+        onClick = { if (enabled) onCheckedChange(!checked) },
+        modifier = modifier.height(60.dp),
+        shape = RoundedCornerShape(12.dp),
+        color = if (checked) MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.3f) 
+               else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = if (enabled) 0.1f else 0.05f),
+        border = BorderStroke(1.dp, if (checked) MaterialTheme.colorScheme.secondary.copy(alpha = 0.5f) else Color.Transparent)
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(Modifier.weight(1f)) {
+                Text(label, style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
+                Text(description, style = MaterialTheme.typography.labelSmall, maxLines = 1, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            Switch(
+                checked = checked,
+                onCheckedChange = onCheckedChange,
+                enabled = enabled,
+                modifier = Modifier.scale(0.7f)
             )
         }
     }

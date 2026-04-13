@@ -94,77 +94,95 @@ class EmulatorViewModel(application: Application) : AndroidViewModel(application
                 }
                 var safeSettings = settings.copy(disks = correctedDisks)
 
-                val preparedIsos = safeSettings.isoUris.map { uri ->
-                    com.range.rangeEmulator.util.UriHelper.getRealPathFromUri(getApplication(), uri)
-                }
-                safeSettings = safeSettings.copy(isoUris = preparedIsos)
-
-                val activeVms = vms.value.filter { it.id != safeSettings.id && (it.state == VmState.RUNNING || it.state == VmState.STARTING) }
-                
-                var vncToTry = safeSettings.vncPort
-                var spiceToTry = safeSettings.spicePort
-                var sshToTry = safeSettings.sshPort
-
-                // Avoid ports used by other VMs in repository
-                while (activeVms.any { it.vncPort == vncToTry }) vncToTry++
-                while (activeVms.any { it.spicePort == spiceToTry }) spiceToTry++
-                while (activeVms.any { it.sshPort == sshToTry }) sshToTry++
-
-                // Ensure ports are actually available on the device and unique from each other
-                val finalVnc = com.range.rangeEmulator.util.PortUtil.findAvailablePort(vncToTry)
-                val finalSpice = com.range.rangeEmulator.util.PortUtil.findAvailablePort(maxOf(spiceToTry, finalVnc + 1))
-                val finalSsh = com.range.rangeEmulator.util.PortUtil.findAvailablePort(maxOf(sshToTry, finalSpice + 1))
-
-                safeSettings = safeSettings.copy(vncPort = finalVnc, spicePort = finalSpice, sshPort = finalSsh)
-                if (safeSettings != settings) repository.saveVm(safeSettings)
-
-                updateVmState(safeSettings.id, VmState.STARTING)
-                try { createDisksIfMissing(safeSettings) } catch (e: Exception) { Timber.e(e, "Pre-launch disk check failed") }
-
-                clearLogs(safeSettings.id)
-                appendLog(safeSettings.id, "--- Configuration Initialized ---")
-                appendLog(safeSettings.id, "VNC Port: $finalVnc")
-                appendLog(safeSettings.id, "SPICE Port: $finalSpice")
-                appendLog(safeSettings.id, "SSH HostPort: $finalSsh")
-                appendLog(safeSettings.id, "--- Starting QEMU Engine ---")
-
-                viewModelScope.launch {
-                    executor.getLogStream(safeSettings.id).collect { logLine ->
-                        appendLog(safeSettings.id, logLine)
+                try {
+                    val preparedIsos = safeSettings.isoUris.map { uri ->
+                        com.range.rangeEmulator.util.UriHelper.getRealPathFromUri(getApplication(), uri)
                     }
-                }
+                    safeSettings = safeSettings.copy(isoUris = preparedIsos)
 
-                startKeepAliveService()
+                    val activeVms = vms.value.filter { it.id != safeSettings.id && (it.state == VmState.RUNNING || it.state == VmState.STARTING) }
+                    
+                    var vncToTry = safeSettings.vncPort
+                    var spiceToTry = safeSettings.spicePort
+                    var sshToTry = safeSettings.sshPort
 
-                val result = executor.executeCommand(
-                    vmId = safeSettings.id,
-                    fullCommand = safeSettings.buildFullCommand(),
-                    isTurboEnabled = safeSettings.isTurboEnabled
-                ) { exitCode ->
+                    while (activeVms.any { it.vncPort == vncToTry }) vncToTry++
+                    while (activeVms.any { it.spicePort == spiceToTry }) spiceToTry++
+                    while (activeVms.any { it.sshPort == sshToTry }) sshToTry++
+
+                    val finalVnc = com.range.rangeEmulator.util.PortUtil.findAvailablePort(vncToTry)
+                    val finalSpice = com.range.rangeEmulator.util.PortUtil.findAvailablePort(maxOf(spiceToTry, finalVnc + 1))
+                    val finalSsh = com.range.rangeEmulator.util.PortUtil.findAvailablePort(maxOf(sshToTry, finalSpice + 1))
+
+                    safeSettings = safeSettings.copy(
+                        vncPort = finalVnc,
+                        spicePort = finalSpice,
+                        sshPort = finalSsh
+                    )
+
+                    if (safeSettings != settings) repository.saveVm(safeSettings)
+
+                    updateVmState(safeSettings.id, VmState.STARTING)
+                    try { createDisksIfMissing(safeSettings) } catch (e: Exception) { Timber.e(e, "Pre-launch disk check failed") }
+
+                    clearLogs(safeSettings.id)
+                    appendLog(safeSettings.id, "--- Configuration Initialized (Build: 2026-04-14.v5) ---")
+                    appendLog(safeSettings.id, "VNC Port: $finalVnc")
+                    appendLog(safeSettings.id, "SPICE Port: $finalSpice")
+                    appendLog(safeSettings.id, "SSH HostPort: $finalSsh")
+                    appendLog(safeSettings.id, "--- Starting QEMU Engine ---")
+ 
+                    // Use resolved ISO paths from step 101
+                    val resolvedSafeSettings = safeSettings 
+
+                    val tpmCacheDir = java.io.File(getApplication<Application>().cacheDir, "tpm_${safeSettings.id}")
+                    if (!tpmCacheDir.exists()) tpmCacheDir.mkdirs()
+                    val tpmSockPath = if (safeSettings.isTpmEnabled) {
+                        java.io.File(tpmCacheDir, "swtpm.sock").absolutePath
+                    } else null
+ 
                     viewModelScope.launch {
-                        val currentState = vms.value.find { it.id == safeSettings.id }?.state
-                        if (currentState != VmState.STOPPING && currentState != VmState.INACTIVE) {
-                            if (exitCode == 0 || exitCode == 143 || exitCode == 137) {
-                                updateVmState(safeSettings.id, VmState.INACTIVE)
-                                appendLog(safeSettings.id, "--- VM Exited Normally ---")
-                            } else {
-                                updateVmState(safeSettings.id, VmState.ERROR)
-                                appendLog(safeSettings.id, "--- ERROR: VM Crashed (Code: $exitCode) ---")
-                                _uiEvent.send(UiEvent.Error("Emulator crashed (Code: $exitCode)"))
-                            }
+                        executor.getLogStream(safeSettings.id).collect { logLine ->
+                            appendLog(safeSettings.id, logLine)
                         }
-                        if (!executor.hasRunningProcesses()) stopKeepAliveService()
                     }
-                }
-
-                result.onSuccess {
-                    updateVmState(safeSettings.id, VmState.RUNNING)
-                    Timber.i("VM ${safeSettings.vmName} started.")
-                    _uiEvent.send(UiEvent.NavigateToEmulator(safeSettings.id))
-                }.onFailure { e ->
-                    updateVmState(safeSettings.id, VmState.ERROR)
-                    appendLog(safeSettings.id, "LAUNCH ERROR: ${e.message}")
-                    _uiEvent.send(UiEvent.Error("Launch failed: ${e.message}"))
+ 
+                    startKeepAliveService()
+ 
+                    val result = executor.executeCommand(
+                        vmId = safeSettings.id,
+                        fullCommand = resolvedSafeSettings.buildFullCommand(tpmSockPath = tpmSockPath),
+                        isTpmEnabled = safeSettings.isTpmEnabled,
+                        tpmSockPath = tpmSockPath,
+                        arch = safeSettings.arch
+                    ) { exitCode ->
+                        viewModelScope.launch {
+                            val currentState = vms.value.find { it.id == safeSettings.id }?.state
+                            if (currentState != VmState.STOPPING && currentState != VmState.INACTIVE) {
+                                if (exitCode == 0 || exitCode == 143 || exitCode == 137) {
+                                    updateVmState(safeSettings.id, VmState.INACTIVE)
+                                    appendLog(safeSettings.id, "--- VM Exited Normally ---")
+                                } else {
+                                    updateVmState(safeSettings.id, VmState.ERROR)
+                                    appendLog(safeSettings.id, "--- ERROR: VM Crashed (Code: $exitCode) ---")
+                                    _uiEvent.send(UiEvent.Error("Emulator crashed (Code: $exitCode)"))
+                                }
+                            }
+                            if (!executor.hasRunningProcesses()) stopKeepAliveService()
+                        }
+                    }
+ 
+                    result.onSuccess {
+                        updateVmState(safeSettings.id, VmState.RUNNING)
+                        repository.saveVm(safeSettings.copy(state = VmState.RUNNING, vncPort = finalVnc, spicePort = finalSpice))
+                        _uiEvent.send(UiEvent.NavigateToEmulator(safeSettings.id))
+                    }
+                    result.onFailure { e ->
+                        updateVmState(safeSettings.id, VmState.INACTIVE)
+                        _uiEvent.send(UiEvent.Error("Launch failed: ${e.message}"))
+                    }
+                } catch (e: Exception) {
+                    _uiEvent.send(UiEvent.Error("Preparation failed: ${e.message}"))
                 }
 
             } catch (e: Exception) {
@@ -228,13 +246,6 @@ class EmulatorViewModel(application: Application) : AndroidViewModel(application
 
     fun setEditingVm(vm: VirtualMachineSettings?) { _editingVm.value = vm }
     
-    fun updateTurboMode(vmId: String, enabled: Boolean) {
-        viewModelScope.launch {
-            vms.value.find { it.id == vmId }?.let { vm ->
-                repository.saveVm(vm.copy(isTurboEnabled = enabled))
-            }
-        }
-    }
 
     fun loadVmForEditing(id: String) {
         viewModelScope.launch { _editingVm.emit(vms.value.find { it.id == id }) }
@@ -251,11 +262,7 @@ class EmulatorViewModel(application: Application) : AndroidViewModel(application
             putExtra(KeepAliveService.EXTRA_MODE, KeepAliveService.MODE_VM)
         }
         try {
-            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
-                app.startForegroundService(intent)
-            } else {
-                app.startService(intent)
-            }
+            app.startForegroundService(intent)
         } catch (e: Exception) {
             Timber.e(e, "Failed to start KeepAliveService")
         }

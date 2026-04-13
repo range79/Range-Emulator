@@ -20,14 +20,17 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.graphics.Color
 import com.range.rangeEmulator.data.enums.*
 import com.range.rangeEmulator.data.model.*
 import com.range.rangeEmulator.ui.screen.addNewEmulator.CpuModelDropdown
 import com.range.rangeEmulator.ui.screen.addNewEmulator.ISOListItem
 import com.range.rangeEmulator.ui.screen.addNewEmulator.KvmStatusCard
-import com.range.rangeEmulator.ui.screen.addNewEmulator.OsSelector
+import com.range.rangeEmulator.ui.screen.addNewEmulator.OptimizationType
+import com.range.rangeEmulator.ui.screen.addNewEmulator.PerformanceTuningCard
 import com.range.rangeEmulator.ui.screen.addNewEmulator.SectionHeader
+import com.range.rangeEmulator.ui.screen.addNewEmulator.SystemConfigPanel
 import com.range.rangeEmulator.ui.screen.addNewEmulator.SettingSlider
 import com.range.rangeEmulator.util.HardwareUtil
 import com.range.rangeEmulator.viewModel.EmulatorViewModel
@@ -55,9 +58,18 @@ fun EditEmulatorScreen(
     var cpuCores by remember { mutableFloatStateOf((deviceMaxCores / 2f).coerceAtLeast(1f)) }
     var isGpuEnabled by remember { mutableStateOf(true) }
     var selectedOsType by remember { mutableStateOf(OsType.LINUX) }
+    var selectedArch by remember { mutableStateOf(Architecture.AARCH64) }
     var selectedIsos by remember { mutableStateOf<List<Uri>>(emptyList()) }
     val diskList = remember { mutableStateListOf<DiskConfig>() }
     var showAddDiskDialog by remember { mutableStateOf(false) }
+
+    var isCacheUnsafe by remember { mutableStateOf(false) }
+    var isMemPreallocEnabled by remember { mutableStateOf(false) }
+    var is4kAlignmentEnabled by remember { mutableStateOf(false) }
+    var isDiscardEnabled by remember { mutableStateOf(true) }
+    var isDetectZeroesEnabled by remember { mutableStateOf(true) }
+    var isGicV3Enabled by remember { mutableStateOf(true) }
+    var isIoThreadEnabled by remember { mutableStateOf(true) }
 
     var newDiskSize by remember { mutableStateOf(10f) }
     var newDiskFormat by remember { mutableStateOf(DiskFormat.QCOW2) }
@@ -103,6 +115,7 @@ fun EditEmulatorScreen(
     var selectedScreenType by remember { mutableStateOf(ScreenType.VNC) }
     var isTitanModeEnabled by remember { mutableStateOf(false) }
     var selectedDiskInterface by remember { mutableStateOf(DiskInterface.NVME) }
+    var isTpmEnabled by remember { mutableStateOf(false) }
     var showTitanWarning by remember { mutableStateOf(false) }
     val maxTbSize = remember { (deviceMaxRam - 512).coerceAtLeast(256) }
     val tbSafeLimit = remember { deviceMaxRam / 3 }
@@ -120,8 +133,8 @@ fun EditEmulatorScreen(
             ramAmount = vm.ramMB.toFloat()
             cpuCores = vm.cpuCores.toFloat()
             isGpuEnabled = vm.isGpuEnabled
-            screenWidth = vm.screenWidth.toString()
-            screenHeight = vm.screenHeight.toString()
+            screenWidth = if (vm.screenWidth == 0) "1280" else vm.screenWidth.toString()
+            screenHeight = if (vm.screenHeight == 0) "720" else vm.screenHeight.toString()
             vncPort = vm.vncPort.toString()
             spicePort = vm.spicePort.toString()
             selectedScreenType = vm.screenType
@@ -130,8 +143,18 @@ fun EditEmulatorScreen(
             selectedIsos = vm.isoUris.map { Uri.parse(it) }
             isTitanModeEnabled = vm.isTitanModeEnabled
             selectedDiskInterface = vm.diskInterface
+            isTpmEnabled = vm.isTpmEnabled
+            selectedArch = vm.arch
             diskList.clear()
             diskList.addAll(vm.disks)
+
+            isCacheUnsafe = vm.isCacheUnsafe
+            isMemPreallocEnabled = vm.isMemPreallocEnabled
+            is4kAlignmentEnabled = vm.is4kAlignmentEnabled
+            isDiscardEnabled = vm.isDiscardEnabled
+            isDetectZeroesEnabled = vm.isDetectZeroesEnabled
+            isGicV3Enabled = vm.isGicV3Enabled
+            isIoThreadEnabled = vm.isIoThreadEnabled
         }
     }
 
@@ -153,7 +176,16 @@ fun EditEmulatorScreen(
             isoUris = selectedIsos.map { it.toString() },
             disks = diskList.toList(),
             diskInterface = selectedDiskInterface,
-            isTitanModeEnabled = isTitanModeEnabled
+            isTitanModeEnabled = isTitanModeEnabled,
+            isTpmEnabled = isTpmEnabled,
+            arch = selectedArch,
+            isCacheUnsafe = isCacheUnsafe,
+            isMemPreallocEnabled = isMemPreallocEnabled,
+            is4kAlignmentEnabled = is4kAlignmentEnabled,
+            isDiscardEnabled = isDiscardEnabled,
+            isDetectZeroesEnabled = isDetectZeroesEnabled,
+            isGicV3Enabled = isGicV3Enabled,
+            isIoThreadEnabled = isIoThreadEnabled
         )?.let { onSave(it) }
     }
 
@@ -295,7 +327,10 @@ fun EditEmulatorScreen(
                 },
                 confirmButton = {
                     Button(
-                        onClick = { isTitanModeEnabled = true; showTitanWarning = false },
+                        onClick = { 
+                            isTitanModeEnabled = true
+                            showTitanWarning = false 
+                        },
                         colors = ButtonDefaults.buttonColors(containerColor = Color.Red)
                     ) { Text("I Accept the Risk") }
                 },
@@ -322,8 +357,27 @@ fun EditEmulatorScreen(
                 leadingIcon = { Icon(Icons.Default.Label, null) }
             )
 
-            SectionHeader("Operating System")
-            OsSelector(selectedOs = selectedOsType, onOsSelected = { selectedOsType = it })
+            SectionHeader("Core Configuration")
+            SystemConfigPanel(
+                selectedOs = selectedOsType,
+                selectedArch = selectedArch,
+                selectedCpu = selectedCpu,
+                isTpmEnabled = isTpmEnabled,
+                hasKvm = hasKvmSupport,
+                onOsSelected = { selectedOsType = it },
+                onArchSelected = { arch ->
+                    selectedArch = arch
+                    if (selectedCpu.getArch() != arch.toQemuArch()) {
+                        selectedCpu = if (arch == Architecture.AARCH64) {
+                            if (hasKvmSupport) CpuModel.HOST else CpuModel.MAX
+                        } else {
+                            CpuModel.QEMU64
+                        }
+                    }
+                },
+                onCpuSelected = { selectedCpu = it },
+                onTpmSelected = { isTpmEnabled = it }
+            )
 
             SectionHeader("Storage Management")
             
@@ -492,32 +546,35 @@ fun EditEmulatorScreen(
                     Text("Max Performance Preset")
                 }
             }
-            KvmStatusCard(hasKvmSupport)
-
-            OutlinedCard(
-                modifier = Modifier.fillMaxWidth(),
-                colors = CardDefaults.outlinedCardColors(
-                    containerColor = if (isTitanModeEnabled) MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.1f) else MaterialTheme.colorScheme.surface
-                ),
-                border = BorderStroke(if (isTitanModeEnabled) 2.dp else 1.dp, if (isTitanModeEnabled) Color.Red else MaterialTheme.colorScheme.outlineVariant)
-            ) {
-                Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Column(Modifier.weight(1f)) {
-                        Text("TITAN MODE", fontWeight = FontWeight.ExtraBold, color = if (isTitanModeEnabled) Color.Red else MaterialTheme.colorScheme.onSurface)
-                        Text("Extreme performance, high data risk.", style = MaterialTheme.typography.labelSmall)
+            PerformanceTuningCard(
+                isTitanEnabled = isTitanModeEnabled,
+                isCacheUnsafe = isCacheUnsafe,
+                isMemPrealloc = isMemPreallocEnabled,
+                isDiscard = isDiscardEnabled,
+                isDetectZeroes = isDetectZeroesEnabled,
+                isGicV3 = isGicV3Enabled,
+                isIoThread = isIoThreadEnabled,
+                arch = selectedArch,
+                is4kAlignment = is4kAlignmentEnabled,
+                osType = selectedOsType,
+                onTitanToggled = { enabled: Boolean -> 
+                    if (enabled) {
+                        showTitanWarning = true 
+                    } else {
+                        isTitanModeEnabled = false
                     }
-                    Switch(
-                        checked = isTitanModeEnabled,
-                        onCheckedChange = { if (it) showTitanWarning = true else isTitanModeEnabled = false },
-                        colors = SwitchDefaults.colors(checkedThumbColor = Color.Red, checkedTrackColor = Color.Red.copy(alpha = 0.5f))
-                    )
+                },
+                onGranularChange = { type: OptimizationType, value: Boolean ->
+                    when (type) {
+                        OptimizationType.CACHE_UNSAFE -> isCacheUnsafe = value
+                        OptimizationType.MEM_PREALLOC -> isMemPreallocEnabled = value
+                        OptimizationType.DISCARD -> isDiscardEnabled = value
+                        OptimizationType.IOTHREAD -> isIoThreadEnabled = value
+                        OptimizationType.GIC_V3 -> isGicV3Enabled = value
+                        OptimizationType.DETECT_ZEROES -> isDetectZeroesEnabled = value
+                        OptimizationType.ALIGN_4K -> is4kAlignmentEnabled = value
+                    }
                 }
-            }
-
-            CpuModelDropdown(
-                selectedModel = selectedCpu,
-                hasKvm = hasKvmSupport,
-                onModelSelected = { selectedCpu = it }
             )
 
             SettingSlider(
@@ -599,6 +656,7 @@ fun EditEmulatorScreen(
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.primary
             )
+
             Spacer(Modifier.height(32.dp))
         }
     }

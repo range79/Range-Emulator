@@ -52,6 +52,9 @@ class EngineViewModel(application: Application) : AndroidViewModel(application) 
     private val _toolsTargetUrl = MutableStateFlow("")
     val toolsTargetUrl: StateFlow<String> = _toolsTargetUrl.asStateFlow()
 
+    private val _tpmTargetUrl = MutableStateFlow("")
+    val tpmTargetUrl: StateFlow<String> = _tpmTargetUrl.asStateFlow()
+
     private val _isEnginePaused = MutableStateFlow(false)
     val isEnginePaused: StateFlow<Boolean> = _isEnginePaused.asStateFlow()
 
@@ -114,6 +117,8 @@ class EngineViewModel(application: Application) : AndroidViewModel(application) 
                         engineSize = (size.toLongOrNull()?.let { it / (1024 * 1024) } ?: 107).toString()
                     } else if (name.contains("Range-Emulator-Qemu-Img.zip")) {
                         toolsUrl = downloadUrl
+                    } else if (name.contains("tpm_binaries_android.zip")) {
+                        _tpmTargetUrl.value = downloadUrl
                     }
                 }
 
@@ -121,9 +126,13 @@ class EngineViewModel(application: Application) : AndroidViewModel(application) 
                     _engineTargetUrl.value = engineUrl
                     _toolsTargetUrl.value = toolsUrl
                     _engineTargetSizeMB.value = engineSize
+                    if (_tpmTargetUrl.value.isEmpty()) {
+                        _tpmTargetUrl.value = "https://github.com/range79x/Range-Emulator-Dependencies/releases/latest/download/tpm_binaries_android.zip"
+                    }
                 } else {
                     _engineTargetUrl.value = "https://github.com/range79x/Range-Emulator-Dependencies/releases/latest/download/Range-Emulator-Dependencies.zip"
                     _toolsTargetUrl.value = "https://github.com/range79x/Range-Emulator-Dependencies/releases/latest/download/Range-Emulator-Qemu-Img.zip"
+                    _tpmTargetUrl.value = "https://github.com/range79x/Range-Emulator-Dependencies/releases/latest/download/tpm_binaries_android.zip"
                     _engineTargetSizeMB.value = "107"
                 }
                 _engineDownloadStatus.value = "Idle"
@@ -308,14 +317,43 @@ class EngineViewModel(application: Application) : AndroidViewModel(application) 
                                                     _engineDownloadStatus.value = "Extracting Tools... $ep%"
                                                 }
                                                     if (toolsSuccess) {
-                                                        isExtractionTriggered = false
-                                                        _engineDownloadStatus.value = "Download Finished"
-                                                    _isEngineDownloaded.value = true
-                                                    _isEngineDownloading.value = false
-                                                    stopKeepAlive()
-                                                    val installedTag = prefs.getString("engine_target_tag", "") ?: ""
-                                                    if (installedTag.isNotEmpty()) saveInstalledVersion(installedTag)
-                                                    _event.send(EngineEvent.DownloadComplete)
+                                                        _engineDownloadStatus.value = "Downloading TPM Binaries..."
+                                                        val tpmUrl = _tpmTargetUrl.value.ifEmpty {
+                                                            targetUrl.replace("Range-Emulator-Dependencies.zip", "tpm_binaries_android.zip")
+                                                        }
+                                                        executor.downloadZip(tpmUrl, "tpm_binaries.zip", allowMobile) { td, tt, terr, tres ->
+                                                            if (!terr && !tres) {
+                                                                val tp = if (tt > 0) ((td * 100) / tt).toInt() else 0
+                                                                _engineDownloadProgress.value = tp
+                                                                _engineDownloadStatus.value = "Downloading TPM... $tp%"
+                                                                if (tp == 100) {
+                                                                    viewModelScope.launch {
+                                                                        val tpmSuccess = executor.extractZip("tpm_binaries.zip") { tep ->
+                                                                            _engineDownloadProgress.value = tep
+                                                                            _engineDownloadStatus.value = "Extracting TPM... $tep%"
+                                                                        }
+                                                                        if (tpmSuccess) {
+                                                                            isExtractionTriggered = false
+                                                                            _engineDownloadStatus.value = "Download Finished"
+                                                                            _isEngineDownloaded.value = true
+                                                                            _isEngineDownloading.value = false
+                                                                            stopKeepAlive()
+                                                                            val installedTag = prefs.getString("engine_target_tag", "") ?: ""
+                                                                            if (installedTag.isNotEmpty()) saveInstalledVersion(installedTag)
+                                                                            _event.send(EngineEvent.DownloadComplete)
+                                                                        } else {
+                                                                            _engineDownloadStatus.value = "TPM Extraction Failed!"
+                                                                            _isEnginePaused.value = true
+                                                                            stopKeepAlive()
+                                                                        }
+                                                                    }
+                                                                }
+                                                            } else if (terr) {
+                                                                _engineDownloadStatus.value = "TPM Download Failed"
+                                                                _isEnginePaused.value = true
+                                                                stopKeepAlive()
+                                                            }
+                                                        }
                                                 } else {
                                                     _engineDownloadStatus.value = "Tools Extraction Failed!"
                                                     _isEnginePaused.value = true

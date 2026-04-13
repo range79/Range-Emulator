@@ -7,7 +7,7 @@ import timber.log.Timber
 
 object PerformanceHintManagerHelper {
 
-    private var session: Any? = null // Using Any to avoid compile errors on older SDKs
+    private var session: Any? = null
 
     fun createPerformanceSession(context: Context, tids: IntArray): Boolean {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) return false
@@ -16,10 +16,8 @@ object PerformanceHintManagerHelper {
             val manager = context.getSystemService(Context.PERFORMANCE_HINT_SERVICE) as? PerformanceHintManager
             if (manager == null) return false
 
-            // Target duration in nanoseconds (4ms for aggressive scaling)
             val targetDurationNanos = 4000000L
             
-            // On API 31+, we can create a session
             @Suppress("NewApi")
             session = manager.createHintSession(tids, targetDurationNanos)
             
@@ -36,14 +34,11 @@ object PerformanceHintManagerHelper {
         val currentSession = session ?: return
 
         try {
-            // Signal a massive workload gap (20ms work for a 4ms target)
-            // This forces the Governor to stay at peak frequency
             @Suppress("NewApi")
             if (currentSession is PerformanceHintManager.Session) {
                 currentSession.reportActualWorkDuration(20000000L) 
             }
         } catch (e: Exception) {
-            // Silently fail to avoid log flooding
         }
     }
 

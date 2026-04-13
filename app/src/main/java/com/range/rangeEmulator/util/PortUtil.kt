@@ -19,7 +19,6 @@ object PortUtil {
             retries++
         }
         
-        // Fallback to OS assigned port
         return try {
             ServerSocket(0).use { it.localPort }
         } catch (e: Exception) {

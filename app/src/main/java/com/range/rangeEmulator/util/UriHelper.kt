@@ -5,43 +5,30 @@ import android.net.Uri
 import timber.log.Timber
 import java.io.File
 import java.io.FileOutputStream
+import androidx.core.net.toUri
 
-object UriHelper {
+ object UriHelper {
 
-    suspend fun getRealPathFromUri(context: Context, uriString: String): String = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
-        if (!uriString.startsWith("content://")) return@withContext uriString
+    fun getRealPathFromUri(context: Context, uriString: String): String {
+        if (!uriString.startsWith("content://")) return uriString
 
-        val uri = Uri.parse(uriString)
+        val uri = uriString.toUri()
         getDirectPath(context, uri)?.let { path ->
             if (File(path).exists() && File(path).canRead()) {
-                Timber.i("Using direct path for ISO: $path")
-                return@withContext path
+                Timber.i("Resolved direct path: $path")
+                return path
+            }
+        }
+        
+        // Final attempt: Use _data column directly if available
+        getDataColumn(context, uri, null, null)?.let { path ->
+            if (File(path).exists() && File(path).canRead()) {
+                Timber.i("Resolved path from MediaStore: $path")
+                return path
             }
         }
 
-        val fileName = getFileName(context, uri) ?: "temp_${System.currentTimeMillis()}.bin"
-        val destFile = File(context.cacheDir, fileName)
-
-        if (destFile.exists() && destFile.length() > 0) {
-            return@withContext destFile.absolutePath
-        }
-
-        Timber.w("Falling back to slow URI copy for: $uriString")
-        try {
-            context.contentResolver.openInputStream(uri)?.use { input ->
-                FileOutputStream(destFile).use { output ->
-                    val buffer = ByteArray(256 * 1024)
-                    var bytesRead: Int
-                    while (input.read(buffer).also { bytesRead = it } != -1) {
-                        output.write(buffer, 0, bytesRead)
-                    }
-                }
-            }
-            return@withContext destFile.absolutePath
-        } catch (e: Exception) {
-            Timber.e(e, "Failed to copy URI to cache: $uriString")
-            uriString
-        }
+        return uriString
     }
 
     private fun getDirectPath(context: Context, uri: Uri): String? {
@@ -98,7 +85,6 @@ object UriHelper {
                 }
             }
         } catch (e: Exception) {
-            // Ignore, we have fallbacks
         }
         return null
     }
