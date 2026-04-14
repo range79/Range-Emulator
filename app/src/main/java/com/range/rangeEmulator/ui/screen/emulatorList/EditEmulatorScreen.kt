@@ -367,13 +367,6 @@ fun EditEmulatorScreen(
                 onOsSelected = { selectedOsType = it },
                 onArchSelected = { arch ->
                     selectedArch = arch
-                    if (selectedCpu.getArch() != arch.toQemuArch()) {
-                        selectedCpu = if (arch == Architecture.AARCH64) {
-                            if (hasKvmSupport) CpuModel.HOST else CpuModel.MAX
-                        } else {
-                            CpuModel.QEMU64
-                        }
-                    }
                 },
                 onCpuSelected = { selectedCpu = it },
                 onTpmSelected = { isTpmEnabled = it }
@@ -505,7 +498,7 @@ fun EditEmulatorScreen(
                     Text("Enable Virtio-GPU")
                     if (!isGpuSupported) {
                         Text(
-                            "⚠️ Hardware Alert: This phone does not support OpenGL ES 3.0+. 3D acceleration will crash or fail to start.",
+                            "Hardware Alert: This phone does not support OpenGL ES 3.0+. 3D acceleration will crash or fail to start.",
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.error,
                             fontWeight = FontWeight.Bold
@@ -550,11 +543,8 @@ fun EditEmulatorScreen(
                 isTitanEnabled = isTitanModeEnabled,
                 isCacheUnsafe = isCacheUnsafe,
                 isMemPrealloc = isMemPreallocEnabled,
-                isDiscard = isDiscardEnabled,
-                isDetectZeroes = isDetectZeroesEnabled,
                 isGicV3 = isGicV3Enabled,
                 isIoThread = isIoThreadEnabled,
-                arch = selectedArch,
                 is4kAlignment = is4kAlignmentEnabled,
                 osType = selectedOsType,
                 onTitanToggled = { enabled: Boolean -> 

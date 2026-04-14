@@ -63,51 +63,43 @@ fun VirtualMachineSettings.buildFullCommand(tpmSockPath: String? = null, isSetup
 
     cmd.add("qemu_executable")
 
-    // Optimized performance is now standard
     cmd.add("-overcommit")
     cmd.add("cpu-pm=on")
 
-    // Consolidated Machine Configuration
     cmd.add("-machine")
-    if (arch == Architecture.AARCH64) {
-        val gic = if (isTitanModeEnabled || isGicV3Enabled) "3" else "max"
-        // Windows ARM requires virtualization=on (EL2), ACPI and ITS for stable boot
-        val machineBase = "virt,gic-version=$gic,its=on,highmem=on,acpi=on"
-        val machineArgs = if (osType == OsType.WINDOWS || isTitanModeEnabled) {
-            "$machineBase,virtualization=on"
-        } else {
-            machineBase
-        }
-        cmd.add(machineArgs)
-    } else {
-        cmd.add("q35")
-    }
+        val gic = if (osType == OsType.WINDOWS || isGicV3Enabled) "3" else "max"
+        val virtAttr = if (osType == OsType.WINDOWS) ",virtualization=on" else ",virtualization=off"
+        val itsAttr = if (osType == OsType.LINUX && isTitanModeEnabled) "off" else "on"
+        val highmemAttr = "on"
+        val machineBase = "virt,gic-version=$gic,its=$itsAttr,highmem=$highmemAttr,acpi=on"
+        
+        cmd.add("$machineBase$virtAttr")
 
     cmd.add("-boot")
-    cmd.add("menu=on,strict=on")
+    val splashTime = if (osType == OsType.WINDOWS) 2500 else 0
+    cmd.add("menu=on,strict=on,splash-time=$splashTime")
 
     cmd.add("-cpu")
     val cpuParam = if (cpuModel == CpuModel.HOST) "host" else cpuModel.toQemuParam()
     if (cpuModel == CpuModel.HOST) {
-        cmd.add("$cpuParam,pmu=on,lse=on,host-cache-info=on,l3-cache=on")
-    } else if (arch == Architecture.AARCH64 && cpuModel == CpuModel.MAX) {
-        // Disable pauth for Windows ARM to avoid TCG exception conflicts in some UEFI versions
-        val pauth = if (osType == OsType.WINDOWS) ",pauth=off" else ",pauth=on"
-        cmd.add("$cpuParam$pauth")
+        val pmuAttr = if (osType == OsType.LINUX && isTitanModeEnabled) "off" else "on"
+        cmd.add("$cpuParam,pmu=$pmuAttr,lse=on,host-cache-info=on,l3-cache=on")
+    } else if (cpuModel == CpuModel.MAX) {
+        val pauth = if (osType == OsType.WINDOWS) ",pauth=on" else ",pauth=off"
+        val pmuAttr = if (osType == OsType.LINUX && isTitanModeEnabled) ",pmu=off" else ""
+        cmd.add("$cpuParam$pauth$pmuAttr")
     } else {
         cmd.add(cpuParam)
     }
 
     cmd.add("-accel")
-    val titanMultiplier = if (isTitanModeEnabled) 2 else 1
-    val finalTbSize = tbSizeMB.coerceAtLeast(1024 * titanMultiplier)
+    val finalTbSize = tbSizeMB
     if (cpuModel == CpuModel.HOST) {
         cmd.add("kvm:tcg,thread=multi,tb-size=${finalTbSize}")
     } else {
         cmd.add("tcg,thread=multi,tb-size=${finalTbSize}")
     }
 
-    // IOThreads and performance flags are now default
     cmd.add("-object")
     val pollArgs = ",poll-max-ns=32768,poll-grow=2,poll-shrink=2"
     cmd.add("iothread,id=iothread0$pollArgs")
@@ -116,10 +108,8 @@ fun VirtualMachineSettings.buildFullCommand(tpmSockPath: String? = null, isSetup
     cmd.add("qemu-xhci,id=usb,rombar=0")
     cmd.add("-device")
     cmd.add("virtio-scsi-pci,id=scsi0,iothread=iothread0,disable-legacy=on,disable-modern=off,rombar=0")
-    
-    // Mouse Support: Use USB Tablet for absolute coordinate sync in SPICE/Windows
-    // Now safe since 4K block size conflict is resolved
-    if (arch == Architecture.AARCH64 && osType == OsType.WINDOWS) {
+
+    if (osType == OsType.WINDOWS) {
         cmd.add("-device")
         cmd.add("usb-tablet,bus=usb.0")
     }
@@ -141,7 +131,6 @@ fun VirtualMachineSettings.buildFullCommand(tpmSockPath: String? = null, isSetup
     if (isoUris.isNotEmpty() || isSetupMode || easyInstall) {
         isoUris.forEachIndexed { index, uri ->
             val driveId = "cd$index"
-            // Restore missing -drive flag and use high performance parameters
             cmd.add("-drive")
             cmd.add("file=$uri,format=raw,if=none,id=$driveId,readonly=on,cache=unsafe,aio=threads,discard=on")
             
@@ -149,16 +138,7 @@ fun VirtualMachineSettings.buildFullCommand(tpmSockPath: String? = null, isSetup
             val blockArgs = if (is4kSafe) ",logical_block_size=4096,physical_block_size=4096" else ""
             
             cmd.add("-device")
-            if (arch == Architecture.AARCH64 && osType == OsType.WINDOWS) {
-                // Use modernized SCSI-CD for best compatibility with Windows/ARM installers
-                cmd.add("scsi-cd,drive=$driveId,bus=scsi0.0,bootindex=$index")
-            } else if (arch == Architecture.AARCH64) {
-                // Use scsi-cd on Windows/ARM for standard CD-ROM emulation
-                cmd.add("scsi-cd,drive=$driveId,bus=scsi0.0,bootindex=$index")
-            } else {
-                val vectors = cpuCores * 2 + 2
-                cmd.add("virtio-blk-pci,drive=$driveId,bootindex=$index,iothread=iothread0,num-queues=$cpuCores,vectors=$vectors,disable-legacy=on,disable-modern=off$blockArgs")
-            }
+            cmd.add("scsi-cd,drive=$driveId,bus=scsi0.0,bootindex=$index")
         }
     }
 
@@ -168,13 +148,11 @@ fun VirtualMachineSettings.buildFullCommand(tpmSockPath: String? = null, isSetup
         cmd.add("-tpmdev")
         cmd.add("emulator,id=tpm0,chardev=chrtpm")
         cmd.add("-device")
-        val tpmDevice = if (arch == Architecture.AARCH64) "tpm-tis-device" else "tpm-tis"
-        cmd.add("$tpmDevice,tpmdev=tpm0")
+        cmd.add("tpm-tis-device,tpmdev=tpm0")
     }
 
     disks.forEachIndexed { index, disk ->
         val formatName = disk.format.name.lowercase()
-        // Force unsafe cache for all virtual disks to maximize throughput
         val cacheMode = "unsafe"
         val discard = "on" 
         val detectZeroes = "on" 
@@ -188,7 +166,6 @@ fun VirtualMachineSettings.buildFullCommand(tpmSockPath: String? = null, isSetup
         val is4kSafe = if (osType == OsType.WINDOWS && isTitanModeEnabled) false else (isTitanModeEnabled || is4kAlignmentEnabled)
 
         if (diskInterface == DiskInterface.NVME) {
-            // Use single-device NVMe for maximum compatibility with Windows built-in drivers
             val blockArgs = if (is4kSafe) ",logical_block_size=4096,physical_block_size=4096" else ""
             cmd.add("nvme,drive=$driveId,serial=vdisk$index,bootindex=${isoUris.size + 10 + index},rombar=0$blockArgs")
         } else {
@@ -240,7 +217,6 @@ private fun VirtualMachineSettings.getNetworkArgs(): List<String> {
             args.add("-device")
             
             val netDevice = if (osType == OsType.WINDOWS) {
-                // Windows ARM likes modern virtio-net
                 "virtio-net-pci,netdev=net0,disable-legacy=on,disable-modern=off,rombar=0"
             } else {
                 val turboNet = ",mrg_rxbuf=on" 
@@ -259,55 +235,26 @@ private fun VirtualMachineSettings.getNetworkArgs(): List<String> {
 private fun VirtualMachineSettings.getDisplayArgs(): List<String> {
     val args = mutableListOf<String>()
 
-    val isArm = arch == Architecture.AARCH64
-    // Deterministic Graphics Configuration
-    args.add("-vga")
-    args.add("none")
-
-    // For AArch64 Windows, ramfb is a sysbus device for early boot
-    if (osType == OsType.WINDOWS && isArm) {
-        args.add("-device")
-        args.add("ramfb")
-    }
+    args.add("-device")
+    args.add("ramfb")
+    
+    val resParams = if (screenWidth > 0 && screenHeight > 0) ",xres=$screenWidth,yres=$screenHeight" else ""
 
     if (isGpuEnabled) {
-        val resParams = if (screenWidth > 0 && screenHeight > 0) ",xres=$screenWidth,yres=$screenHeight" else ""
-        if (isArm) {
-            // Explicitly use PCI version for GPU on ARM virt machine
-            args.add("-device")
-            args.add("virtio-gpu-pci${resParams},edid=on,disable-legacy=on,disable-modern=off,rombar=0")
-        } else {
-            args.add("-device")
-            args.add("virtio-vga${resParams},edid=on,disable-legacy=on,disable-modern=off,rombar=0")
-        }
+        args.add("-device")
+        args.add("virtio-gpu-pci${resParams},edid=on,max_outputs=1,disable-legacy=on,disable-modern=off,rombar=0")
     } else {
-        if (isArm) {
-            args.add("-device")
-            args.add("virtio-gpu-pci,edid=on,disable-legacy=on,disable-modern=off,rombar=0")
-        } else {
-            args.add("-device")
-            args.add("virtio-vga,edid=on,disable-legacy=on,disable-modern=off,rombar=0")
-        }
+        args.add("-device")
+        args.add("virtio-gpu-pci,edid=on,max_outputs=1,disable-legacy=on,disable-modern=off,rombar=0")
     }
 
     args.add("-display")
     args.add("none")
 
-    val biosFile = when (arch) {
-        Architecture.AARCH64 -> "pc-bios/edk2-aarch64-code.fd"
-        Architecture.X86_64 -> "pc-bios/edk2-x86_64-code.fd"
-    }
-    
-    // For AArch64 virt machine, pflash is the modern way to load UEFI
-    if (arch == Architecture.AARCH64) {
-        args.add("-drive")
-        args.add("if=pflash,format=raw,unit=0,readonly=on,file=$biosFile")
-        // We add a variables store if it exists or can be created in the app's logic
-        // For now, we use the code fd as unit 0. 
-    } else {
-        args.add("-bios")
-        args.add(biosFile)
-    }
+    val biosFile = "pc-bios/edk2-aarch64-code.fd"
+
+    args.add("-drive")
+    args.add("if=pflash,format=raw,unit=0,readonly=on,file=$biosFile")
 
     val vncIndex = vncPort - 5900
     args.add("-vnc")

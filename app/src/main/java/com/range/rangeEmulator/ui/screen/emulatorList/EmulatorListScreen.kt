@@ -231,7 +231,7 @@ fun VMCard(
                     Spacer(Modifier.height(4.dp))
                     val archLabel = vm.arch.toQemuArch().uppercase()
                     Surface(
-                        color = if (archLabel == "X86_64") MaterialTheme.colorScheme.tertiaryContainer else MaterialTheme.colorScheme.secondaryContainer,
+                        color = MaterialTheme.colorScheme.secondaryContainer,
                         shape = RoundedCornerShape(4.dp)
                     ) {
                         Text(
@@ -239,7 +239,7 @@ fun VMCard(
                             modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
                             style = MaterialTheme.typography.labelSmall,
                             fontWeight = FontWeight.Bold,
-                            color = if (archLabel == "X86_64") MaterialTheme.colorScheme.onTertiaryContainer else MaterialTheme.colorScheme.onSecondaryContainer
+                            color = MaterialTheme.colorScheme.onSecondaryContainer
                         )
                     }
                 }
@@ -313,7 +313,7 @@ fun VMCard(
                     val isHwSupported = HardwareUtil.isGpuAccelerationSupported(context)
                     CompactInfoChip(
                         if (isHwSupported) Icons.Default.FlashOn else Icons.Default.FlashOff, 
-                        if (isHwSupported) "GPU" else "GPU⚠️", 
+                        if (isHwSupported) "GPU" else "GPU (Unsupported)", 
                         tint = if (isHwSupported) Color(0xFFFFC107) else MaterialTheme.colorScheme.error
                     )
                 }

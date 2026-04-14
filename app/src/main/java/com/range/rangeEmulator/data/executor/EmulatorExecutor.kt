@@ -109,11 +109,10 @@ class EmulatorExecutor(private val context: Context) {
         arch: Architecture = Architecture.AARCH64,
         onExit: ((Int) -> Unit)? = null
     ): Result<Long> = withContext(Dispatchers.IO) {
-        // Force kill any existing process for this VM to ensure a clean start
         if (isAlive(vmId)) {
             Timber.tag(TAG).w("VM $vmId is already running/stale. Force killing before restart...")
             killProcess(vmId)
-            delay(500) // Small delay to let the OS clean up
+            delay(500) 
         }
 
         try {
@@ -189,7 +188,6 @@ class EmulatorExecutor(private val context: Context) {
             runningProcesses[vmId] = process
             logJobs[vmId] = launchLogReader(vmId, process.inputStream)
 
-            // Performance Booster is now standard for all modes
             launchPerformanceBooster(vmId, process)
 
             if (wakeLock == null) {
@@ -373,7 +371,7 @@ class EmulatorExecutor(private val context: Context) {
             add("type=unixio,path=$sockPath")
             add("--tpm2")
             add("--log")
-            add("level=20")
+            add("level=5")
         }
 
         val pb = ProcessBuilder(cmd)
@@ -388,26 +386,30 @@ class EmulatorExecutor(private val context: Context) {
             val process = pb.start()
             swtpmProcesses[vmId] = process
             
+            val flow = _logStreams.getOrPut(vmId) { MutableSharedFlow(replay = 100, extraBufferCapacity = 500) }
+
             executorScope.launch {
                 try {
                     process.inputStream.bufferedReader().use { reader ->
-                        reader.forEachLine { line ->
-                            Timber.tag("SWTPM_$vmId").d(line)
+                        var line: String? = reader.readLine()
+                        while (line != null) {
+                            flow.emit("[TPM] $line")
+                            line = reader.readLine()
                         }
                     }
                 } catch (e: Exception) {
                     if (e !is java.io.IOException && e !is java.util.concurrent.CancellationException) {
-                        Timber.tag("SWTPM_$vmId").e(e, "Log reader failed")
+                        flow.emit("[TPM ERROR] Log reader failed: ${e.message}")
                     }
                 } finally {
                     try {
                         val exitCode = process.waitFor()
-                        Timber.tag("SWTPM_$vmId").i("Process exited with code: $exitCode")
+                        flow.emit("[TPM] Process exited with code: $exitCode")
                     } catch (_: Exception) {}
                     cleanup(vmId)
                 }
             }
-            Timber.tag(TAG).d("Started swtpm for $vmId at $sockPath")
+            Timber.tag(TAG).v("Started swtpm for $vmId")
         } catch (e: Exception) {
             Timber.tag(TAG).e(e, "Failed to launch swtpm")
         }

@@ -25,6 +25,7 @@ class EmulatorViewModel(application: Application) : AndroidViewModel(application
 
     private val repository = VmSettingsRepositoryImpl(application.applicationContext)
     private val executor = (application as RangeEmulatorApp).executor
+    private val syncedStuckVms = mutableSetOf<String>()
 
     private val _vmLogs = androidx.compose.runtime.mutableStateMapOf<String, List<String>>()
     val vmLogsMap: Map<String, List<String>> = _vmLogs
@@ -60,7 +61,9 @@ class EmulatorViewModel(application: Application) : AndroidViewModel(application
                     if (vm.state == VmState.RUNNING || vm.state == VmState.STARTING || vm.state == VmState.STOPPING) {
                         if (!executor.isAlive(vm.id)) {
                             updateVmState(vm.id, VmState.INACTIVE)
-                            Timber.tag("EmulatorViewModel").i("Synced stuck VM state for: ${vm.vmName}")
+                            if (syncedStuckVms.add(vm.id)) {
+                                Timber.tag("EmulatorViewModel").i("Synced stuck VM state for: ${vm.vmName}")
+                            }
                         }
                     }
                 }

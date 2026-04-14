@@ -61,11 +61,22 @@ fun KvmStatusCard(hasKvm: Boolean) {
         ),
         modifier = Modifier.fillMaxWidth()
     ) {
-        Text(
-            text = if (hasKvm) "✅ KVM Supported" else "⚠️ KVM Not Detected",
+        Row(
             modifier = Modifier.padding(12.dp),
-            style = MaterialTheme.typography.labelSmall
-        )
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(
+                imageVector = if (hasKvm) Icons.Default.Verified else Icons.Default.Info,
+                contentDescription = null,
+                modifier = Modifier.size(16.dp),
+                tint = if (hasKvm) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error
+            )
+            Spacer(Modifier.width(8.dp))
+            Text(
+                text = if (hasKvm) "KVM Hardware Acceleration Active" else "KVM Acceleration Not Detected",
+                style = MaterialTheme.typography.labelSmall
+            )
+        }
     }
 }
 
@@ -114,7 +125,6 @@ fun getCpuDescription(model: CpuModel): String = when (model) {
 fun CpuModelDropdown(
     selectedModel: CpuModel,
     hasKvm: Boolean,
-    arch: Architecture = Architecture.AARCH64,
     onModelSelected: (CpuModel) -> Unit
 ) {
     val context = LocalContext.current
@@ -141,7 +151,7 @@ fun CpuModelDropdown(
             expanded = expanded,
             onDismissRequest = { expanded = false }
         ) {
-            CpuModel.entries.filter { it.isUniversal() || it.getArch() == arch.toQemuArch() }.forEach { model ->
+            CpuModel.entries.forEach { model ->
                 val isUnsupported = model.requiresKvm() && !hasKvm
 
                 DropdownMenuItem(
@@ -186,6 +196,7 @@ fun SystemConfigPanel(
     onCpuSelected: (CpuModel) -> Unit,
     onTpmSelected: (Boolean) -> Unit
 ) {
+    val context = LocalContext.current
     OutlinedCard(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(24.dp),
@@ -223,13 +234,21 @@ fun SystemConfigPanel(
                     horizontalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
                     Architecture.entries.forEach { arch ->
+                        val isSupported = arch == Architecture.AARCH64
                         val isSelected = selectedArch == arch
                         Surface(
-                            onClick = { onArchSelected(arch) },
+                            onClick = { 
+                                if (isSupported) onArchSelected(arch) 
+                                else Toast.makeText(context, "x86_64 architecture is no longer supported.", Toast.LENGTH_SHORT).show()
+                            },
                             modifier = Modifier.weight(1f),
                             shape = RoundedCornerShape(8.dp),
-                            color = if (isSelected) MaterialTheme.colorScheme.primary else Color.Transparent,
-                            contentColor = if (isSelected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant
+                            color = if (isSelected) MaterialTheme.colorScheme.primary 
+                                    else if (!isSupported) MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.2f)
+                                    else Color.Transparent,
+                            contentColor = if (isSelected) MaterialTheme.colorScheme.onPrimary 
+                                          else if (!isSupported) MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f)
+                                          else MaterialTheme.colorScheme.onSurfaceVariant
                         ) {
                             Box(
                                 modifier = Modifier
@@ -241,7 +260,8 @@ fun SystemConfigPanel(
                                     Icon(
                                         if (arch == Architecture.AARCH64) Icons.Default.Memory else Icons.Default.Computer,
                                         null,
-                                        modifier = Modifier.size(16.dp)
+                                        modifier = Modifier.size(16.dp),
+                                        tint = if (!isSupported && !isSelected) MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f) else Color.Unspecified
                                     )
                                     Spacer(Modifier.width(8.dp))
                                     Text(
@@ -261,9 +281,17 @@ fun SystemConfigPanel(
                 CpuModelDropdown(
                     selectedModel = selectedCpu,
                     hasKvm = hasKvm,
-                    arch = selectedArch,
                     onModelSelected = onCpuSelected
                 )
+                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(start = 4.dp)) {
+                    Icon(Icons.Default.Info, null, modifier = Modifier.size(14.dp), tint = MaterialTheme.colorScheme.error)
+                    Spacer(Modifier.width(4.dp))
+                    Text(
+                        "x86_64 architecture is no longer supported.",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.error
+                    )
+                }
             }
 
             Surface(
@@ -363,11 +391,8 @@ fun PerformanceTuningCard(
     isTitanEnabled: Boolean,
     isCacheUnsafe: Boolean,
     isMemPrealloc: Boolean,
-    isDiscard: Boolean,
-    isDetectZeroes: Boolean,
     isGicV3: Boolean,
     isIoThread: Boolean,
-    arch: Architecture,
     is4kAlignment: Boolean,
     onTitanToggled: (Boolean) -> Unit,
     onGranularChange: (OptimizationType, Boolean) -> Unit,
@@ -454,16 +479,14 @@ fun PerformanceTuningCard(
                         enabled = false,
                         modifier = Modifier.weight(1f)
                     )
-                    if (arch == Architecture.AARCH64) {
-                        OptimizationToggle(
-                            label = "GIC v3",
-                            description = "+30% IO Speed",
-                            checked = titanLocked || isGicV3,
-                            onCheckedChange = { onGranularChange(OptimizationType.GIC_V3, it) },
-                            enabled = !titanLocked,
-                            modifier = Modifier.weight(1f)
-                        )
-                    }
+                    OptimizationToggle(
+                        label = "GIC v3",
+                        description = "+30% IO Speed",
+                        checked = titanLocked || isGicV3,
+                        onCheckedChange = { onGranularChange(OptimizationType.GIC_V3, it) },
+                        enabled = !titanLocked,
+                        modifier = Modifier.weight(1f)
+                    )
 
                     val isWindowsTitan = osType == OsType.WINDOWS && titanLocked
                     OptimizationToggle(
@@ -471,7 +494,7 @@ fun PerformanceTuningCard(
                         description = if (isWindowsTitan) "Disabled (Stability)" else "Turbo IO",
                         checked = if (isWindowsTitan) false else (titanLocked || is4kAlignment),
                         onCheckedChange = { onGranularChange(OptimizationType.ALIGN_4K, it) },
-                        enabled = !isWindowsTitan, // Fixed: Only disabled in Titan Mode for Windows
+                        enabled = !isWindowsTitan,
                         modifier = Modifier.weight(1f)
                     )
                 }

@@ -216,9 +216,9 @@ fun VmControlScreen(
                 ) {
                     val archLabel = vm.arch.toQemuArch().uppercase()
                     CompactInfoChip(
-                        icon = if (archLabel == "X86_64") Icons.Default.Computer else Icons.Default.PhoneAndroid,
+                        icon = Icons.Default.PhoneAndroid,
                         label = archLabel,
-                        tint = if (archLabel == "X86_64") MaterialTheme.colorScheme.tertiary else MaterialTheme.colorScheme.secondary
+                        tint = MaterialTheme.colorScheme.secondary
                     )
                     val cpuLabel = if (vm.cpuModel == CpuModel.HOST) "KVM" else vm.cpuModel.name
                     CompactInfoChip(
@@ -240,7 +240,7 @@ fun VmControlScreen(
                         val hwSupported = HardwareUtil.isGpuAccelerationSupported(context)
                         CompactInfoChip(
                             if (hwSupported) Icons.Default.FlashOn else Icons.Default.FlashOff, 
-                            if (hwSupported) "GPU" else "GPU⚠️", 
+                            if (hwSupported) "GPU" else "GPU (Unsupported)", 
                             tint = if (hwSupported) Color(0xFFFFC107) else MaterialTheme.colorScheme.error
                         )
                     }

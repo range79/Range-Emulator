@@ -153,11 +153,6 @@ fun AddNewEmulatorScreen(
                 EasyInstallSettings(ezUsername, ezPassword, selectedDE)
             } else null,
             arch = selectedArch,
-            isCacheUnsafe = isCacheUnsafe,
-            isMemPreallocEnabled = isMemPreallocEnabled,
-            is4kAlignmentEnabled = is4kAlignmentEnabled,
-            isDiscardEnabled = isDiscardEnabled,
-            isDetectZeroesEnabled = isDetectZeroesEnabled,
             isGicV3Enabled = isGicV3Enabled,
             isIoThreadEnabled = isIoThreadEnabled
         ))
@@ -346,11 +341,6 @@ fun AddNewEmulatorScreen(
                 onOsSelected = { selectedOsType = it },
                 onArchSelected = { arch ->
                     selectedArch = arch
-                    selectedCpu = if (arch == Architecture.AARCH64) {
-                        if (hasKvmSupport) CpuModel.HOST else CpuModel.MAX
-                    } else {
-                        CpuModel.QEMU64
-                    }
                 },
                 onCpuSelected = { selectedCpu = it },
                 onTpmSelected = { isTpmEnabled = it }
@@ -449,12 +439,15 @@ fun AddNewEmulatorScreen(
                 Column(modifier = Modifier.weight(1f)) {
                     Text("Enable GPU Acceleration")
                     if (!isGpuSupported) {
-                        Text(
-                            "⚠️ Hardware Alert: This phone does not support OpenGL ES 3.0+. 3D acceleration will crash or fail to start.",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.error,
-                            fontWeight = FontWeight.Bold
-                        )
+                        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 4.dp)) {
+                            Icon(Icons.Default.Info, null, modifier = Modifier.size(14.dp), tint = MaterialTheme.colorScheme.error)
+                            Spacer(Modifier.width(4.dp))
+                            Text(
+                                "Hardware Compatibility Alert: OpenGL ES 3.0+ not detected. GPU acceleration may be unstable.",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.error
+                            )
+                        }
                     } else {
                         Text(
                             "Status: Supported. Virtio-GPU uses your phone's GPU. Disable if the VM becomes unstable.",
@@ -496,11 +489,8 @@ fun AddNewEmulatorScreen(
                 isTitanEnabled = isTitanModeEnabled,
                 isCacheUnsafe = isCacheUnsafe,
                 isMemPrealloc = isMemPreallocEnabled,
-                isDiscard = isDiscardEnabled,
-                isDetectZeroes = isDetectZeroesEnabled,
                 isGicV3 = isGicV3Enabled,
                 isIoThread = isIoThreadEnabled,
-                arch = selectedArch,
                 is4kAlignment = is4kAlignmentEnabled,
                 osType = selectedOsType,
                 onTitanToggled = { 

@@ -136,8 +136,11 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun updateState() {
-        uiPermissionState = permissionManager.getFullPermissionState()
-        Timber.d("Permission state updated: $uiPermissionState")
+        val newState = permissionManager.getFullPermissionState()
+        if (newState != uiPermissionState) {
+            uiPermissionState = newState
+            Timber.d("Permission state updated: $uiPermissionState")
+        }
     }
 
     override fun onResume() {
